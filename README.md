@@ -51,19 +51,26 @@ AWS のロールを引き受けられるのは、このリポジトリの main �
 
 ## 初回設定(1回だけ)
 
-1. AWS コンソールで「CloudFormation」→「スタックの作成」を開き、`cloudformation/github-oidc.yaml` をアップロードします。
-   スタック名は `github-actions-isucon` などにしてください。
-   アカウントに GitHub の OIDC プロバイダが既にあるなら、パラメータ `CreateOIDCProvider` を `false` にします。
-   最後の画面で「AWS CloudFormation によって IAM リソースが作成される場合があることを承認します」にチェックを入れてください
-2. できたスタックの「出力」タブの `RoleArn` を控えます
-3. このリポジトリの「Settings」→「Secrets and variables」→「Actions」→「Secrets」タブで、Secret を2つ作ります
+1. [AWS CloudShell(東京リージョン)](https://ap-northeast-1.console.aws.amazon.com/cloudshell/home?region=ap-northeast-1) を開き、次の1行を貼って実行します
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/scripts/bootstrap.sh | bash
+   ```
+
+   Actions 用の IAM ロール(`cloudformation/github-oidc.yaml`)をスタック `github-actions-isucon` として作り、最後に `RoleArn` を表示します。
+   アカウントに GitHub の OIDC プロバイダが既にあるかは自動で判定します。何度実行しても大丈夫です
+2. 表示されたリンク(このリポジトリの「Settings」→「Secrets and variables」→「Actions」)で、Secret を2つ作ります
 
    | 名前 | 値 |
    |---|---|
-   | `AWS_ROLE_ARN` | 手順2の `RoleArn` |
+   | `AWS_ROLE_ARN` | 手順1で表示された `RoleArn` |
    | `ISUCON_GITHUB_USERS` | メンバーの GitHub ユーザー名をスペース区切りで(例: `alice bob carol`) |
 
-4. 「Actions」→「practice-env」→「Run workflow」を `status` で1回実行します。バッジが作られ、AWS に入れることの確認にもなります
+3. 「Actions」→「practice-env」→「Run workflow」を `status` で1回実行します。バッジが作られ、AWS に入れることの確認にもなります
+
+CloudShell を使わない場合は、CloudFormation コンソールで `cloudformation/github-oidc.yaml` をアップロードしても作れます
+(最後の画面で IAM リソース作成の承認にチェックを入れ、OIDC プロバイダが既にあるならパラメータ `CreateOIDCProvider` を `false` にします)。
+CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置かないと使えないため、用意していません。
 
 あわせて、AWS の「Service Quotas」で東京リージョンの「Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances」が
 **10 以上**あるか確かめてください(4台で 10 vCPU 使います)。メンバー全員に `age` を入れてもらいます(`brew install age` など)。
@@ -170,5 +177,6 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 |---|---|
 | `cloudformation/practice-env.yaml` | 練習環境のテンプレート |
 | `cloudformation/github-oidc.yaml` | Actions が引き受ける IAM ロール(初回に1回だけ作る) |
+| `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、`RoleArn` を表示する |
 | `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
