@@ -73,7 +73,30 @@ CloudShell を使わない場合は、CloudFormation コンソールで `cloudfo
 CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置かないと使えないため、用意していません。
 
 あわせて、AWS の「Service Quotas」で東京リージョンの「Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances」が
-**10 以上**あるか確かめてください(4台で 10 vCPU 使います)。メンバー全員に `age` を入れてもらいます(`brew install age` など)。
+**10 以上**あるか確かめてください(4台で 10 vCPU 使います)。
+
+## メンバーの事前準備(各自1回だけ)
+
+サーバには、各自が GitHub に登録した SSH 公開鍵で入ります。暗号化した `ssh_config` も同じ鍵で開きます。
+**手元の秘密鍵が、自分の GitHub アカウントに登録されているか**を先に確かめてください。
+`ssh -T git@github.com` が通っていても、別のアカウントの鍵や、別の PC の鍵しか登録されていないことがあります。
+
+1. `age` を入れます(`brew install age` など)
+2. 手元の鍵のうち、自分の GitHub アカウントに登録されているものを探します(`<GitHub ユーザー名>` を自分の名前に)
+
+   ```bash
+   keys=$(curl -s https://github.com/<GitHub ユーザー名>.keys); for f in ~/.ssh/*.pub; do echo "$keys" | grep -qF "$(cut -d' ' -f2 "$f")" && echo "登録済み: ${f%.pub}"; done
+   ```
+
+3. 何も出なければ、鍵を作って登録します。`~/.ssh/id_ed25519` は ssh が自動で試す名前なので、ほかの開発にもそのまま使えます
+
+   ```bash
+   ssh-keygen -t ed25519            # 保存先はそのまま Enter で ~/.ssh/id_ed25519
+   pbcopy < ~/.ssh/id_ed25519.pub   # https://github.com/settings/ssh/new に貼って登録
+   ```
+
+   age が扱えるのは ed25519 と RSA の鍵だけです(ECDSA や `sk-` で始まる鍵は使えません)。
+   鍵を登録した後に作った環境でないと、サーバには入れません(公開鍵は起動時に1回だけ取り込むため)。
 
 ## 使い方
 
@@ -83,7 +106,14 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 2. 5分前後で終わります。実行結果の Summary に暗号化された `ssh_config` が出るので、コピーして手元で復号してください
 
    ```bash
-   pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例。RSA なら ~/.ssh/id_rsa
+   pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例
+   ```
+
+   鍵が `id_ed25519` / `id_rsa` 以外の名前なら、ssh が自動では試さないので `IdentityFile` も書き足します
+
+   ```bash
+   K=~/.ssh/<鍵の名前>
+   pbpaste | age -d -i $K | awk -v k="$K" '{print} /^  User isucon$/{print "  IdentityFile " k "\n  IdentitiesOnly yes"}' >> ~/.ssh/config
    ```
 
 3. `ssh isu1` で入れます(ユーザーは `isucon`)
@@ -166,7 +196,9 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 作成が `Unsupported` で失敗する | その AZ にインスタンスタイプが無い。手で `AvailabilityZone` を変えて作る |
 | 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
-| `ssh_config` を復号できない | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
+| `age: error: no identity matched any of the recipients` | 使った秘密鍵が、自分の GitHub アカウントに登録されていない(または `ISUCON_GITHUB_USERS` に自分が入っていない)。「メンバーの事前準備」の手順2で確かめ、鍵を登録してから `down` → `up` で作り直す |
+| `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。`-i` に自分の鍵を指定する |
+| `ssh_config` を復号できない(上以外) | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
 | `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San@8444945/isucon-practice-env@1404043632:ref:refs/heads/main` と一致するか見る(GitHub の新しい形式。リポジトリを作り直すと ID が変わるので、`bootstrap.sh` を実行し直す) |
 | バッジが表示されない | `status` で1回実行する |
 | 毎朝の自動削除が動かなくなった | 公開リポジトリは60日間動きが無いと定期実行が止まる。Actions 画面で有効にし直す |
