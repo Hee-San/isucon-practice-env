@@ -42,7 +42,7 @@ AMI ID は `.github/workflows/practice-env.yml` の `case` 文に書いてあり
 | 隠すもの | 方法 |
 |---|---|
 | サーバの IP | Summary には平文で出さず、メンバーの GitHub 公開鍵(ed25519 / RSA)で暗号化した `ssh_config` だけを出します。ログでもマスクします |
-| AWS のアカウント ID | ロール ARN を Secret に置き、`configure-aws-credentials` の `mask-aws-account-id` でログからも隠します |
+| AWS のアカウント ID | Secret に置き、`configure-aws-credentials` の `mask-aws-account-id` でログからも隠します。ロール名は `github-actions-isucon` に固定しています |
 | メンバーの GitHub ユーザー名 | Secret に置きます |
 
 AWS のロールを引き受けられるのは、このリポジトリの main ブランチのワークフローだけです。
@@ -57,19 +57,19 @@ AWS のロールを引き受けられるのは、このリポジトリの main �
    curl -fsSL https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/scripts/bootstrap.sh | bash
    ```
 
-   Actions 用の IAM ロール(`cloudformation/github-oidc.yaml`)をスタック `github-actions-isucon` として作り、最後に `RoleArn` を表示します。
+   Actions 用の IAM ロール(`cloudformation/github-oidc.yaml`)をスタック `github-actions-isucon` として作り、最後に Secret に登録するアカウント ID を表示します。
    アカウントに GitHub の OIDC プロバイダが既にあるかは自動で判定します。何度実行しても大丈夫です
 2. 表示されたリンク(このリポジトリの「Settings」→「Secrets and variables」→「Actions」)で、Secret を2つ作ります
 
    | 名前 | 値 |
    |---|---|
-   | `AWS_ROLE_ARN` | 手順1で表示された `RoleArn` |
+   | `AWS_ACCOUNT_ID` | 手順1で表示された12桁のアカウント ID |
    | `ISUCON_GITHUB_USERS` | メンバーの GitHub ユーザー名をスペース区切りで(例: `alice bob carol`) |
 
 3. 「Actions」→「practice-env」→「Run workflow」を `status` で1回実行します。バッジが作られ、AWS に入れることの確認にもなります
 
 CloudShell を使わない場合は、CloudFormation コンソールで `cloudformation/github-oidc.yaml` をアップロードしても作れます
-(最後の画面で IAM リソース作成の承認にチェックを入れ、OIDC プロバイダが既にあるならパラメータ `CreateOIDCProvider` を `false` にします)。
+(最後の画面で「カスタム名のついた IAM リソース」作成の承認にチェックを入れ、OIDC プロバイダが既にあるならパラメータ `CreateOIDCProvider` を `false` にします)。
 CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置かないと使えないため、用意していません。
 
 あわせて、AWS の「Service Quotas」で東京リージョンの「Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances」が
@@ -167,7 +167,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
 | `ssh_config` を復号できない | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
-| `Could not assume role` | Secret `AWS_ROLE_ARN` が無い、または main 以外から実行した |
+| `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San/isucon-practice-env:ref:refs/heads/main` と一致するか見る |
 | バッジが表示されない | `status` で1回実行する |
 | 毎朝の自動削除が動かなくなった | 公開リポジトリは60日間動きが無いと定期実行が止まる。Actions 画面で有効にし直す |
 
@@ -177,6 +177,6 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 |---|---|
 | `cloudformation/practice-env.yaml` | 練習環境のテンプレート |
 | `cloudformation/github-oidc.yaml` | Actions が引き受ける IAM ロール(初回に1回だけ作る) |
-| `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、`RoleArn` を表示する |
+| `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、アカウント ID を表示する |
 | `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |

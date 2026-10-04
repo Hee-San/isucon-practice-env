@@ -26,6 +26,9 @@ Resources:
   DeployRole:
     Type: AWS::IAM::Role
     Properties:
+      # 名前を固定し、ワークフロー側はアカウント ID だけで ARN を組み立てる
+      # (自動生成のランダムな接尾辞は、手で写すと l と I を取り違えやすい)
+      RoleName: github-actions-isucon
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -68,5 +71,4 @@ Resources:
 
 Outputs:
   RoleArn:
-    Description: リポジトリ変数 AWS_ROLE_ARN に入れる値
     Value: !GetAtt DeployRole.Arn

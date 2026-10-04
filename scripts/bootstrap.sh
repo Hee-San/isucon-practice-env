@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 初回設定: GitHub Actions が引き受ける IAM ロール(cloudformation/github-oidc.yaml)を作り、RoleArn を表示する。
+# 初回設定: GitHub Actions が引き受ける IAM ロール(cloudformation/github-oidc.yaml)を作り、
+# Secret に登録するアカウント ID を表示する。
 # AWS CloudShell(東京リージョン)で次の1行を実行する。
 #
 #   curl -fsSL https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/scripts/bootstrap.sh | bash
@@ -31,18 +32,17 @@ curl -fsSL "https://raw.githubusercontent.com/$REPO/main/cloudformation/github-o
 aws cloudformation deploy --region "$REGION" \
   --stack-name "$STACK" \
   --template-file "$template" \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
   --parameter-overrides GitHubRepo="$REPO" CreateOIDCProvider="$create"
 
-role_arn=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
-  --query "Stacks[0].Outputs[?OutputKey=='RoleArn'].OutputValue" --output text)
+account_id=$(aws sts get-caller-identity --query Account --output text)
 
 cat <<MSG
 
 完了しました。次の2つを GitHub の Secret に登録してください:
   https://github.com/$REPO/settings/secrets/actions/new
 
-  AWS_ROLE_ARN         $role_arn
+  AWS_ACCOUNT_ID       $account_id
   ISUCON_GITHUB_USERS  メンバーの GitHub ユーザー名(スペース区切り)
 MSG
