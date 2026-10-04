@@ -26,6 +26,11 @@ else
 fi
 echo "OIDC プロバイダを作るか: $create"
 
+# OIDC トークンの sub に入る、所有者とリポジトリの数値 ID
+read -r owner_id repo_id < <(curl -fsSL "https://api.github.com/repos/$REPO" |
+  python3 -c 'import sys, json; d = json.load(sys.stdin); print(d["owner"]["id"], d["id"])')
+echo "GitHub の ID: owner=$owner_id repo=$repo_id"
+
 template=$(mktemp --suffix=.yaml)
 curl -fsSL "https://raw.githubusercontent.com/$REPO/main/cloudformation/github-oidc.yaml" -o "$template"
 
@@ -34,7 +39,8 @@ aws cloudformation deploy --region "$REGION" \
   --template-file "$template" \
   --capabilities CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset \
-  --parameter-overrides GitHubRepo="$REPO" CreateOIDCProvider="$create"
+  --parameter-overrides GitHubRepo="$REPO" GitHubOwnerId="$owner_id" GitHubRepoId="$repo_id" \
+    CreateOIDCProvider="$create"
 
 account_id=$(aws sts get-caller-identity --query Account --output text)
 
