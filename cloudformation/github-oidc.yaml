@@ -6,6 +6,14 @@ Parameters:
     Type: String
     Default: Hee-San/isucon-practice-env
     Description: ワークフローを動かすリポジトリ(owner/name)
+  GitHubOwnerId:
+    Type: String
+    Default: "8444945"
+    Description: リポジトリ所有者の数値 ID(https://api.github.com/repos/<owner>/<name> の owner.id)
+  GitHubRepoId:
+    Type: String
+    Default: "1404043632"
+    Description: リポジトリの数値 ID(同じ API の id)
   CreateOIDCProvider:
     Type: String
     Default: "true"
@@ -42,8 +50,16 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # main ブランチのワークフローだけが引き受けられる
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
+                # main ブランチのワークフローだけが引き受けられる。
+                # 新しいリポジトリの sub は所有者とリポジトリの数値 ID を含む
+                # (repo:<owner>@<owner_id>/<name>@<repo_id>:ref:...)。名前を取り直されても一致しない。
+                # 従来形式(repo:<owner>/<name>:ref:...)も並べておく(値のどれかに一致すればよい)
+                token.actions.githubusercontent.com:sub:
+                  - !Sub
+                    - "repo:${Owner}@${GitHubOwnerId}/${Name}@${GitHubRepoId}:ref:refs/heads/main"
+                    - Owner: !Select [0, !Split ["/", !Ref GitHubRepo]]
+                      Name: !Select [1, !Split ["/", !Ref GitHubRepo]]
+                  - !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
       Policies:
         - PolicyName: isucon-practice
           PolicyDocument:

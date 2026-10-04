@@ -66,7 +66,7 @@ jobs:
           c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
           for k in ("sub", "aud", "ref", "repository"):
               print(f"{k}: {c.get(k)}")'
-          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "AWS 側の信頼条件の sub は repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main(または従来形式)。違っていればここが原因"
           echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: 回ごとのパラメータを決める
@@ -197,7 +197,7 @@ jobs:
           c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
           for k in ("sub", "aud", "ref", "repository"):
               print(f"{k}: {c.get(k)}")'
-          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "AWS 側の信頼条件の sub は repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main(または従来形式)。違っていればここが原因"
           echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: スタックを削除する
@@ -237,7 +237,7 @@ jobs:
           c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
           for k in ("sub", "aud", "ref", "repository"):
               print(f"{k}: {c.get(k)}")'
-          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "AWS 側の信頼条件の sub は repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main(または従来形式)。違っていればここが原因"
           echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: タグ付きの練習用スタックをすべて削除する
@@ -290,7 +290,7 @@ jobs:
           c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
           for k in ("sub", "aud", "ref", "repository"):
               print(f"{k}: {c.get(k)}")'
-          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "AWS 側の信頼条件の sub は repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main(または従来形式)。違っていればここが原因"
           echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: 状態バッジを更新する

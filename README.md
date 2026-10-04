@@ -167,7 +167,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
 | `ssh_config` を復号できない | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
-| `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San/isucon-practice-env:ref:refs/heads/main` と一致するか見る |
+| `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San@8444945/isucon-practice-env@1404043632:ref:refs/heads/main` と一致するか見る(GitHub の新しい形式。リポジトリを作り直すと ID が変わるので、`bootstrap.sh` を実行し直す) |
 | バッジが表示されない | `status` で1回実行する |
 | 毎朝の自動削除が動かなくなった | 公開リポジトリは60日間動きが無いと定期実行が止まる。Actions 画面で有効にし直す |
 
