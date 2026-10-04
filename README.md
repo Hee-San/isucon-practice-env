@@ -73,7 +73,30 @@ CloudShell を使わない場合は、CloudFormation コンソールで `cloudfo
 CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置かないと使えないため、用意していません。
 
 あわせて、AWS の「Service Quotas」で東京リージョンの「Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances」が
-**10 以上**あるか確かめてください(4台で 10 vCPU 使います)。メンバー全員に `age` を入れてもらいます(`brew install age` など)。
+**10 以上**あるか確かめてください(4台で 10 vCPU 使います)。
+
+## メンバーの事前準備(各自1回だけ)
+
+サーバには、各自が GitHub に登録した SSH 公開鍵で入ります。暗号化した `ssh_config` も同じ鍵で開きます。
+**手元の秘密鍵が、自分の GitHub アカウントに登録されているか**を先に確かめてください。
+`ssh -T git@github.com` が通っていても、別のアカウントの鍵や、別の PC の鍵しか登録されていないことがあります。
+
+1. `age` を入れます(`brew install age` など)
+2. 手元の鍵のうち、自分の GitHub アカウントに登録されているものを探します(`<GitHub ユーザー名>` を自分の名前に)
+
+   ```bash
+   keys=$(curl -s https://github.com/<GitHub ユーザー名>.keys); for f in ~/.ssh/*.pub; do echo "$keys" | grep -qF "$(cut -d' ' -f2 "$f")" && echo "登録済み: ${f%.pub}"; done
+   ```
+
+3. 何も出なければ、鍵を作って登録します。`~/.ssh/id_ed25519` は ssh が自動で試す名前なので、ほかの開発にもそのまま使えます
+
+   ```bash
+   ssh-keygen -t ed25519            # 保存先はそのまま Enter で ~/.ssh/id_ed25519
+   pbcopy < ~/.ssh/id_ed25519.pub   # https://github.com/settings/ssh/new に貼って登録
+   ```
+
+   age が扱えるのは ed25519 と RSA の鍵だけです(ECDSA や `sk-` で始まる鍵は使えません)。
+   鍵を登録した後に作った環境でないと、サーバには入れません(公開鍵は起動時に1回だけ取り込むため)。
 
 ## 使い方
 
@@ -83,7 +106,14 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 2. 5分前後で終わります。実行結果の Summary に暗号化された `ssh_config` が出るので、コピーして手元で復号してください
 
    ```bash
-   pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例。RSA なら ~/.ssh/id_rsa
+   pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例
+   ```
+
+   鍵が `id_ed25519` / `id_rsa` 以外の名前なら、ssh が自動では試さないので `IdentityFile` も書き足します
+
+   ```bash
+   K=~/.ssh/<鍵の名前>
+   pbpaste | age -d -i $K | awk -v k="$K" '{print} /^  User isucon$/{print "  IdentityFile " k "\n  IdentitiesOnly yes"}' >> ~/.ssh/config
    ```
 
 3. `ssh isu1` で入れます(ユーザーは `isucon`)
@@ -102,17 +132,81 @@ systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql|p
 sudo systemctl disable --now <上で出たサービス名>
 ```
 
-### ベンチを回す
+### 回ごとの使い方(Web ページとベンチ)
 
-bench に入って実行します。打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
+#### 共通
 
-| 回 | コマンド |
-|---|---|
-| ISUCON14 | `./bench run . run --addr 192.168.0.11:443 --target https://isuride.xiv.isucon.net --payment-url http://192.168.0.10:12346 --payment-bind-port 12346` |
-| ISUCON13 | isu1 の `~/env.sh` で `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS="192.168.0.11"` にしてアプリを再起動してから、`./bench run --enable-ssl --target https://pipe.u.isucon.local --nameserver 192.168.0.11 --webapp 192.168.0.12 --webapp 192.168.0.13`(未検証) |
-| ISUCON12 予選 | `./bench -target-addr 192.168.0.11:443`(未検証) |
-| ISUCON11 予選 | `./bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000`(未検証) |
-| private-isu | `/home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_isu/benchmarker/userdata -t http://192.168.0.11` |
+**サーバのグローバル IP は、手元の PC で調べます。** サーバの中で実行すると、`/etc/hosts` に書いたプライベート IP の名前(`isu1` など)が返ってくるだけです。
+
+```bash
+# 手元の PC で実行
+ssh -G isu1 | awk '/^hostname /{print $2}'
+```
+
+逆に、サーバの中では `isu1` / `isu2` / `isu3` / `bench` の名前でプライベート IP(192.168.0.10〜13)に届きます。ベンチの向き先やサーバ間の接続には、こちらを使います。
+
+ベンチは bench 機に入って実行します。打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
+初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります(止めるサービス名は回ごとに下に書きます)。
+
+ISUCON の回はアプリが独自ドメインと自己署名証明書の HTTPS で動くので、ブラウザで見るには手元の `/etc/hosts` に1行足します。
+次に建てると IP が変わるので、練習が終わったらその行を消してください。
+
+```bash
+# 手元の PC で実行(<ドメイン> は回ごとに下を見る)
+echo "$(ssh -G isu1 | awk '/^hostname /{print $2}') <ドメイン>" | sudo tee -a /etc/hosts
+```
+
+#### private-isu
+
+- Web ページ: `http://<isu1 のグローバル IP>/`(80 番を開けてあります)
+- bench 機で止めるもの: `sudo systemctl disable --now isu-ruby nginx mysql memcached`
+- ベンチ(bench 機で実行)
+
+  ```bash
+  /home/isucon/private_isu/benchmarker/bin/benchmarker \
+    -u /home/isucon/private_isu/benchmarker/userdata \
+    -t http://192.168.0.11
+  ```
+
+  1分ほどで `{"pass":true,"score":...}` が出ます。初期状態(Ruby 実装)は 1,000 点前後が目安です。
+  `No such file` なら `ls ~` で実際のディレクトリ名を確かめてください(公式 README には `private_isu.git` という名前も載っています)
+
+#### ISUCON14
+
+- Web ページ: `/etc/hosts` に `isuride.xiv.isucon.net` を足し、`https://isuride.xiv.isucon.net/` を開きます(証明書の警告は越えてください)
+- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql'` で出たもの。決済モック(12345 番)は止めなくて大丈夫です
+- ベンチ(bench 機で実行)
+
+  ```bash
+  ./bench run . run --addr 192.168.0.11:443 --target https://isuride.xiv.isucon.net \
+    --payment-url http://192.168.0.10:12346 --payment-bind-port 12346
+  ```
+
+  静的ファイルの検査で落ちるときは `--skip-static-sanity-check` を足します。複数台構成にしたら、`--addr` を入口の台に変えます
+
+#### ISUCON13(未検証)
+
+- Web ページ: `/etc/hosts` に `pipe.u.isucon.local` を足し、`https://pipe.u.isucon.local/` を開きます
+- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql|pdns'` で出たもの
+- ベンチ: 先に isu1 の `~/env.sh` を `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS="192.168.0.11"` に書き換えて、アプリ(`systemctl list-units | grep isupipe` で出るもの)を再起動します。
+  AMI の初期値は `127.0.0.1` で、そのままだと bench 機が名前を引いても自分自身に向かうためです。そのうえで bench 機で実行します
+
+  ```bash
+  ./bench run --enable-ssl --target https://pipe.u.isucon.local \
+    --nameserver 192.168.0.11 --webapp 192.168.0.12 --webapp 192.168.0.13
+  ```
+
+  通らなければ、まず isu1 の上で `./bench run --enable-ssl`(1台で完結する形)が通るか確かめてください
+
+#### ISUCON12 予選(未検証)
+
+- Web ページ: ドメインは `*.t.isucon.local` です。`/etc/hosts` に `admin.t.isucon.local` などを足します
+- ベンチ: `./bench -target-addr 192.168.0.11:443`(配布元の README は1台で回す `127.0.0.1:443` の形だけです)
+
+#### ISUCON11 予選(未検証)
+
+- Web ページ: `https://<isu1 のグローバル IP>/`。ログインには `ssh -L 5000:127.0.0.1:5000 isu1` のポート転送が要ります(配布元の README より)
+- ベンチ: `./bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000`
 
 ### 消す
 
@@ -166,7 +260,9 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 作成が `Unsupported` で失敗する | その AZ にインスタンスタイプが無い。手で `AvailabilityZone` を変えて作る |
 | 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
-| `ssh_config` を復号できない | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
+| `age: error: no identity matched any of the recipients` | 使った秘密鍵が、自分の GitHub アカウントに登録されていない(または `ISUCON_GITHUB_USERS` に自分が入っていない)。「メンバーの事前準備」の手順2で確かめ、鍵を登録してから `down` → `up` で作り直す |
+| `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。`-i` に自分の鍵を指定する |
+| `ssh_config` を復号できない(上以外) | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
 | `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San@8444945/isucon-practice-env@1404043632:ref:refs/heads/main` と一致するか見る(GitHub の新しい形式。リポジトリを作り直すと ID が変わるので、`bootstrap.sh` を実行し直す) |
 | バッジが表示されない | `status` で1回実行する |
 | 毎朝の自動削除が動かなくなった | 公開リポジトリは60日間動きが無いと定期実行が止まる。Actions 画面で有効にし直す |
