@@ -132,17 +132,81 @@ systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql|p
 sudo systemctl disable --now <上で出たサービス名>
 ```
 
-### ベンチを回す
+### 回ごとの使い方(Web ページとベンチ)
 
-bench に入って実行します。打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
+#### 共通
 
-| 回 | コマンド |
-|---|---|
-| ISUCON14 | `./bench run . run --addr 192.168.0.11:443 --target https://isuride.xiv.isucon.net --payment-url http://192.168.0.10:12346 --payment-bind-port 12346` |
-| ISUCON13 | isu1 の `~/env.sh` で `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS="192.168.0.11"` にしてアプリを再起動してから、`./bench run --enable-ssl --target https://pipe.u.isucon.local --nameserver 192.168.0.11 --webapp 192.168.0.12 --webapp 192.168.0.13`(未検証) |
-| ISUCON12 予選 | `./bench -target-addr 192.168.0.11:443`(未検証) |
-| ISUCON11 予選 | `./bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000`(未検証) |
-| private-isu | `/home/isucon/private_isu/benchmarker/bin/benchmarker -u /home/isucon/private_isu/benchmarker/userdata -t http://192.168.0.11` |
+**サーバのグローバル IP は、手元の PC で調べます。** サーバの中で実行すると、`/etc/hosts` に書いたプライベート IP の名前(`isu1` など)が返ってくるだけです。
+
+```bash
+# 手元の PC で実行
+ssh -G isu1 | awk '/^hostname /{print $2}'
+```
+
+逆に、サーバの中では `isu1` / `isu2` / `isu3` / `bench` の名前でプライベート IP(192.168.0.10〜13)に届きます。ベンチの向き先やサーバ間の接続には、こちらを使います。
+
+ベンチは bench 機に入って実行します。打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
+初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります(止めるサービス名は回ごとに下に書きます)。
+
+ISUCON の回はアプリが独自ドメインと自己署名証明書の HTTPS で動くので、ブラウザで見るには手元の `/etc/hosts` に1行足します。
+次に建てると IP が変わるので、練習が終わったらその行を消してください。
+
+```bash
+# 手元の PC で実行(<ドメイン> は回ごとに下を見る)
+echo "$(ssh -G isu1 | awk '/^hostname /{print $2}') <ドメイン>" | sudo tee -a /etc/hosts
+```
+
+#### private-isu
+
+- Web ページ: `http://<isu1 のグローバル IP>/`(80 番を開けてあります)
+- bench 機で止めるもの: `sudo systemctl disable --now isu-ruby nginx mysql memcached`
+- ベンチ(bench 機で実行)
+
+  ```bash
+  /home/isucon/private_isu/benchmarker/bin/benchmarker \
+    -u /home/isucon/private_isu/benchmarker/userdata \
+    -t http://192.168.0.11
+  ```
+
+  1分ほどで `{"pass":true,"score":...}` が出ます。初期状態(Ruby 実装)は 1,000 点前後が目安です。
+  `No such file` なら `ls ~` で実際のディレクトリ名を確かめてください(公式 README には `private_isu.git` という名前も載っています)
+
+#### ISUCON14
+
+- Web ページ: `/etc/hosts` に `isuride.xiv.isucon.net` を足し、`https://isuride.xiv.isucon.net/` を開きます(証明書の警告は越えてください)
+- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql'` で出たもの。決済モック(12345 番)は止めなくて大丈夫です
+- ベンチ(bench 機で実行)
+
+  ```bash
+  ./bench run . run --addr 192.168.0.11:443 --target https://isuride.xiv.isucon.net \
+    --payment-url http://192.168.0.10:12346 --payment-bind-port 12346
+  ```
+
+  静的ファイルの検査で落ちるときは `--skip-static-sanity-check` を足します。複数台構成にしたら、`--addr` を入口の台に変えます
+
+#### ISUCON13(未検証)
+
+- Web ページ: `/etc/hosts` に `pipe.u.isucon.local` を足し、`https://pipe.u.isucon.local/` を開きます
+- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql|pdns'` で出たもの
+- ベンチ: 先に isu1 の `~/env.sh` を `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS="192.168.0.11"` に書き換えて、アプリ(`systemctl list-units | grep isupipe` で出るもの)を再起動します。
+  AMI の初期値は `127.0.0.1` で、そのままだと bench 機が名前を引いても自分自身に向かうためです。そのうえで bench 機で実行します
+
+  ```bash
+  ./bench run --enable-ssl --target https://pipe.u.isucon.local \
+    --nameserver 192.168.0.11 --webapp 192.168.0.12 --webapp 192.168.0.13
+  ```
+
+  通らなければ、まず isu1 の上で `./bench run --enable-ssl`(1台で完結する形)が通るか確かめてください
+
+#### ISUCON12 予選(未検証)
+
+- Web ページ: ドメインは `*.t.isucon.local` です。`/etc/hosts` に `admin.t.isucon.local` などを足します
+- ベンチ: `./bench -target-addr 192.168.0.11:443`(配布元の README は1台で回す `127.0.0.1:443` の形だけです)
+
+#### ISUCON11 予選(未検証)
+
+- Web ページ: `https://<isu1 のグローバル IP>/`。ログインには `ssh -L 5000:127.0.0.1:5000 isu1` のポート転送が要ります(配布元の README より)
+- ベンチ: `./bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000`
 
 ### 消す
 
