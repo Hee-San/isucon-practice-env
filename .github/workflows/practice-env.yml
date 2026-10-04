@@ -1,0 +1,243 @@
+name: practice-env
+
+# ISUCON 過去問の練習環境(cloudformation/practice-env.yaml)を作成・削除する。
+# 止めている間の課金をゼロにするため、「止める」はインスタンス停止ではなくスタック削除にする。
+#
+# 公開リポジトリなので、ログと Summary に次のものを出さない:
+#   - サーバの IP: ssh_config はメンバーの SSH 公開鍵で暗号化してから Summary に出す
+#   - AWS のアカウント ID: ロール ARN は Secret に置き、ログではマスクする
+#   - メンバーの GitHub ユーザー名: Secret に置く
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up = 作成 / down = 削除 / status = バッジだけ更新"
+        type: choice
+        options: [up, down, status]
+      problem:
+        description: "練習する回(スタック名になる)"
+        type: choice
+        options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu]
+  schedule:
+    # 消し忘れの安全網: 毎日 05:00 JST に残っている練習環境をすべて削除する
+    - cron: "0 20 * * *"
+
+permissions:
+  contents: write # 状態バッジを isucon-status ブランチへ push するため
+  id-token: write # AWS へ OIDC で入るため
+
+# 作成と削除が同時に走らないよう直列化する
+concurrency:
+  group: practice-env
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-1
+  TEMPLATE: cloudformation/practice-env.yaml
+  STACK_TAG: managed-by=isucon-practice
+
+jobs:
+  up:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'up'
+    name: 作成
+    # aws CLI が入っている標準ランナーを使う。スタック作成の待ちを含めて5分前後
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STACK: ${{ inputs.problem }}
+      GITHUB_USERS: ${{ secrets.ISUCON_GITHUB_USERS }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: 回ごとのパラメータを決める
+        id: params
+        run: |
+          # ISUCON の AMI ID は matsuu/aws-isucon、private-isu は catatsuy/private-isu の README から。
+          # 差し替えられたらここを直す
+          count=3; http=false; type=c5.large; bench=c5.xlarge
+          case "$STACK" in
+            isucon14)         ami=ami-0fcf9e8e8675a9ee4; vol=20 ;;
+            isucon13)         ami=ami-006d211cb716fe8a0; vol=40 ;;
+            isucon12-qualify) ami=ami-073140ad092048333; vol=20 ;;
+            isucon11-qualify) ami=ami-0796be4f4814fc3d5; vol=20 ;;
+            # 1台構成の問題。インスタンスタイプは公式の推奨値、アプリは 80 番
+            private-isu)      ami=ami-09201e964bee13733; vol=30
+                              count=1; http=true; type=c7a.large; bench=c7a.xlarge ;;
+            *) echo "::error::未知の回: $STACK"; exit 1 ;;
+          esac
+          if [ -z "$GITHUB_USERS" ]; then
+            echo "::error::Secret ISUCON_GITHUB_USERS が空です"; exit 1
+          fi
+          {
+            echo "ami=$ami"
+            echo "vol=$vol"
+            echo "count=$count"
+            echo "http=$http"
+            echo "type=$type"
+            echo "bench=$bench"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 作成に失敗したスタックが残っていれば消す
+        run: |
+          status=$(aws cloudformation describe-stacks --stack-name "$STACK" \
+            --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true)
+          if [ "$status" = "ROLLBACK_COMPLETE" ]; then
+            aws cloudformation delete-stack --stack-name "$STACK"
+            aws cloudformation wait stack-delete-complete --stack-name "$STACK"
+          fi
+
+      - name: スタックを作る
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$STACK" \
+            --template-file "$TEMPLATE" \
+            --tags "$STACK_TAG" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ImageId=${{ steps.params.outputs.ami }} \
+              VolumeSize=${{ steps.params.outputs.vol }} \
+              ContestantCount=${{ steps.params.outputs.count }} \
+              OpenHttp=${{ steps.params.outputs.http }} \
+              InstanceType=${{ steps.params.outputs.type }} \
+              BenchInstanceType=${{ steps.params.outputs.bench }} \
+              GitHubUsers="$GITHUB_USERS"
+
+      - name: ssh_config を暗号化して Summary に出す
+        run: |
+          sudo apt-get install -y -qq age > /dev/null
+
+          # 宛先はメンバーの GitHub 公開鍵。age が扱えるのは ed25519 と RSA だけ
+          : > recipients.txt
+          for u in $GITHUB_USERS; do
+            keys=$(curl -fsS "https://github.com/$u.keys" | grep -E '^(ssh-ed25519|ssh-rsa) ' || true)
+            if [ -z "$keys" ]; then
+              echo "::warning::GitHub ユーザーの1人に ed25519 / RSA の公開鍵がありません。その人は ssh_config を復号できません"
+            fi
+            printf '%s\n' "$keys" >> recipients.txt
+          done
+          sed -i '/^$/d' recipients.txt
+
+          config=""
+          for h in isu1 isu2 isu3 bench; do
+            ip=$(aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$h'].OutputValue" --output text)
+            [ -z "$ip" ] && continue # 1台構成では isu2 / isu3 が無い
+            echo "::add-mask::$ip"
+            config+=$(printf 'Host %s\n  HostName %s\n  User isucon\n\n' "$h" "$ip")$'\n\n'
+          done
+          printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
+
+          {
+            echo "## $STACK を作成しました"
+            echo
+            echo '下の暗号文をコピーして、手元で復号してください(GitHub に登録した SSH 秘密鍵で開けます)。'
+            echo
+            echo '```bash'
+            echo 'pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例'
+            echo '```'
+            echo
+            echo '```'
+            cat ssh_config.age
+            echo '```'
+            echo
+            echo '終わったら Actions の「practice-env」を `down` で実行してください。'
+            echo '消し忘れても毎日 05:00 JST に自動で削除されます。'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 状態バッジを更新する
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/update-badge.sh
+
+  down:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'down'
+    name: 削除
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STACK: ${{ inputs.problem }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: スタックを削除する
+        run: |
+          aws cloudformation delete-stack --stack-name "$STACK"
+          aws cloudformation wait stack-delete-complete --stack-name "$STACK"
+          echo "## $STACK を削除しました" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 状態バッジを更新する
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/update-badge.sh
+
+  cleanup:
+    if: github.event_name == 'schedule'
+    name: 消し忘れの削除
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: タグ付きの練習用スタックをすべて削除する
+        run: |
+          stacks=$(aws cloudformation describe-stacks \
+            --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].StackName" \
+            --output text)
+          if [ -z "$stacks" ]; then
+            echo "残っている練習環境はありません"
+          fi
+          for s in $stacks; do
+            echo "削除: $s"
+            aws cloudformation delete-stack --stack-name "$s"
+          done
+          for s in $stacks; do
+            aws cloudformation wait stack-delete-complete --stack-name "$s"
+          done
+          if [ -n "$stacks" ]; then
+            echo "## 消し忘れを削除しました: $stacks" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 状態バッジを更新する
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/update-badge.sh
+
+  status:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'status'
+    name: バッジ更新
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: 状態バッジを更新する
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: scripts/update-badge.sh

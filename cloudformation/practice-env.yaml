@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ISUCON kakomon practice environment (3 contestant servers + 1 benchmarker)
+
+Parameters:
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0fcf9e8e8675a9ee4 # matsuu/aws-isucon の ISUCON14
+  InstanceType:
+    Type: String
+    Default: c5.large
+  BenchInstanceType:
+    Type: String
+    Default: c5.xlarge
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-northeast-1c
+  GitHubUsers:
+    Type: String
+    Description: SSH 公開鍵を取り込む GitHub ユーザー名(スペース区切り)
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: 22/443 を開ける接続元
+  VolumeSize:
+    Type: Number
+    Default: 20
+  ContestantCount:
+    Type: String
+    Default: "3"
+    AllowedValues: ["1", "3"]
+    Description: 競技サーバの台数。private-isu は 1
+  OpenHttp:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: 80 番も AllowedCidr に開ける(private-isu をブラウザで見るとき)
+
+Conditions:
+  ThreeContestants: !Equals [!Ref ContestantCount, "3"]
+  ShouldOpenHttp: !Equals [!Ref OpenHttp, "true"]
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Ref AWS::StackName }]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 192.168.0.0/24
+      AvailabilityZone: !Ref AvailabilityZone
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: isucon
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref AllowedCidr }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref AllowedCidr }
+  SecurityGroupHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: ShouldOpenHttp
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: !Ref AllowedCidr
+  SecurityGroupSelfIngress:
+    # VPC 内(競技サーバ同士・ベンチとの間)は全プロトコルを通す
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref SecurityGroup
+
+  Bench:
+    Type: AWS::EC2::Instance
+    DependsOn: DefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref BenchInstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref Subnet
+          GroupSet: [!Ref SecurityGroup]
+          PrivateIpAddress: 192.168.0.10
+          AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeType: gp3, VolumeSize: !Ref VolumeSize }
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-bench" }]
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+            hostnamectl set-hostname ${Host}
+            cat >> /etc/hosts <<'EOT'
+            192.168.0.10 bench
+            192.168.0.11 isu1
+            192.168.0.12 isu2
+            192.168.0.13 isu3
+            EOT
+            install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
+            for u in ${GitHubUsers}; do
+              curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
+            done
+            chown isucon:isucon /home/isucon/.ssh/authorized_keys
+            chmod 600 /home/isucon/.ssh/authorized_keys
+          - Host: bench
+  BenchEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Bench
+  Isu1:
+    Type: AWS::EC2::Instance
+    DependsOn: DefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref Subnet
+          GroupSet: [!Ref SecurityGroup]
+          PrivateIpAddress: 192.168.0.11
+          AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeType: gp3, VolumeSize: !Ref VolumeSize }
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-isu1" }]
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+            hostnamectl set-hostname ${Host}
+            cat >> /etc/hosts <<'EOT'
+            192.168.0.10 bench
+            192.168.0.11 isu1
+            192.168.0.12 isu2
+            192.168.0.13 isu3
+            EOT
+            install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
+            for u in ${GitHubUsers}; do
+              curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
+            done
+            chown isucon:isucon /home/isucon/.ssh/authorized_keys
+            chmod 600 /home/isucon/.ssh/authorized_keys
+          - Host: isu1
+  Isu1EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Isu1
+  Isu2:
+    Type: AWS::EC2::Instance
+    Condition: ThreeContestants
+    DependsOn: DefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref Subnet
+          GroupSet: [!Ref SecurityGroup]
+          PrivateIpAddress: 192.168.0.12
+          AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeType: gp3, VolumeSize: !Ref VolumeSize }
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-isu2" }]
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+            hostnamectl set-hostname ${Host}
+            cat >> /etc/hosts <<'EOT'
+            192.168.0.10 bench
+            192.168.0.11 isu1
+            192.168.0.12 isu2
+            192.168.0.13 isu3
+            EOT
+            install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
+            for u in ${GitHubUsers}; do
+              curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
+            done
+            chown isucon:isucon /home/isucon/.ssh/authorized_keys
+            chmod 600 /home/isucon/.ssh/authorized_keys
+          - Host: isu2
+  Isu2EIP:
+    Type: AWS::EC2::EIP
+    Condition: ThreeContestants
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Isu2
+  Isu3:
+    Type: AWS::EC2::Instance
+    Condition: ThreeContestants
+    DependsOn: DefaultRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          SubnetId: !Ref Subnet
+          GroupSet: [!Ref SecurityGroup]
+          PrivateIpAddress: 192.168.0.13
+          AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeType: gp3, VolumeSize: !Ref VolumeSize }
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-isu3" }]
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+            hostnamectl set-hostname ${Host}
+            cat >> /etc/hosts <<'EOT'
+            192.168.0.10 bench
+            192.168.0.11 isu1
+            192.168.0.12 isu2
+            192.168.0.13 isu3
+            EOT
+            install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
+            for u in ${GitHubUsers}; do
+              curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
+            done
+            chown isucon:isucon /home/isucon/.ssh/authorized_keys
+            chmod 600 /home/isucon/.ssh/authorized_keys
+          - Host: isu3
+  Isu3EIP:
+    Type: AWS::EC2::EIP
+    Condition: ThreeContestants
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Isu3
+
+
+Outputs:
+  bench:
+    Value: !Ref BenchEIP
+  isu1:
+    Value: !Ref Isu1EIP
+  isu2:
+    Condition: ThreeContestants
+    Value: !Ref Isu2EIP
+  isu3:
+    Condition: ThreeContestants
+    Value: !Ref Isu3EIP
+  InstanceIds:
+    Value: !If
+      - ThreeContestants
+      - !Sub "${Bench} ${Isu1} ${Isu2} ${Isu3}"
+      - !Sub "${Bench} ${Isu1}"

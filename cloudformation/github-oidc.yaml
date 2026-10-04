@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: IAM role for GitHub Actions to create and delete ISUCON practice stacks (one-time setup)
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: Hee-San/isucon-practice-env
+    Description: ワークフローを動かすリポジトリ(owner/name)
+  CreateOIDCProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: アカウントに GitHub の OIDC プロバイダが既にあるなら false
+
+Conditions:
+  ShouldCreateOIDCProvider: !Equals [!Ref CreateOIDCProvider, "true"]
+
+Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOIDCProvider
+                - !Ref GitHubOIDCProvider
+                - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # main ブランチのワークフローだけが引き受けられる
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
+      Policies:
+        - PolicyName: isucon-practice
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # 練習用スタックは名前が isucon か private-isu で始まるものに限る
+              - Effect: Allow
+                Action: cloudformation:*
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/isucon*/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/private-isu*/*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ListStacks
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource: "*"
+              - Effect: Allow
+                Action: ec2:*
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: ap-northeast-1
+
+Outputs:
+  RoleArn:
+    Description: リポジトリ変数 AWS_ROLE_ARN に入れる値
+    Value: !GetAtt DeployRole.Arn
