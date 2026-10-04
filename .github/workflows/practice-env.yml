@@ -5,7 +5,7 @@ name: practice-env
 #
 # 公開リポジトリなので、ログと Summary に次のものを出さない:
 #   - サーバの IP: ssh_config はメンバーの SSH 公開鍵で暗号化してから Summary に出す
-#   - AWS のアカウント ID: ロール ARN は Secret に置き、ログではマスクする
+#   - AWS のアカウント ID: Secret に置き、ログではマスクする
 #   - メンバーの GitHub ユーザー名: Secret に置く
 on:
   workflow_dispatch:
@@ -51,9 +51,23 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-isucon
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
+
+      - name: ロールを引き受けられなかったときに OIDC トークンの中身を出す
+        if: ${{ failure() }}
+        run: |
+          # トークン自体は出さず、AWS 側の信頼条件と突き合わせる項目だけを表示する
+          curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" |
+            python3 -c 'import sys, json, base64
+          t = json.load(sys.stdin)["value"].split(".")[1]
+          c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
+          for k in ("sub", "aud", "ref", "repository"):
+              print(f"{k}: {c.get(k)}")'
+          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: 回ごとのパラメータを決める
         id: params
@@ -168,9 +182,23 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-isucon
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
+
+      - name: ロールを引き受けられなかったときに OIDC トークンの中身を出す
+        if: ${{ failure() }}
+        run: |
+          # トークン自体は出さず、AWS 側の信頼条件と突き合わせる項目だけを表示する
+          curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" |
+            python3 -c 'import sys, json, base64
+          t = json.load(sys.stdin)["value"].split(".")[1]
+          c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
+          for k in ("sub", "aud", "ref", "repository"):
+              print(f"{k}: {c.get(k)}")'
+          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: スタックを削除する
         run: |
@@ -194,9 +222,23 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-isucon
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
+
+      - name: ロールを引き受けられなかったときに OIDC トークンの中身を出す
+        if: ${{ failure() }}
+        run: |
+          # トークン自体は出さず、AWS 側の信頼条件と突き合わせる項目だけを表示する
+          curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" |
+            python3 -c 'import sys, json, base64
+          t = json.load(sys.stdin)["value"].split(".")[1]
+          c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
+          for k in ("sub", "aud", "ref", "repository"):
+              print(f"{k}: {c.get(k)}")'
+          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: タグ付きの練習用スタックをすべて削除する
         run: |
@@ -233,9 +275,23 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-isucon
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
+
+      - name: ロールを引き受けられなかったときに OIDC トークンの中身を出す
+        if: ${{ failure() }}
+        run: |
+          # トークン自体は出さず、AWS 側の信頼条件と突き合わせる項目だけを表示する
+          curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" |
+            python3 -c 'import sys, json, base64
+          t = json.load(sys.stdin)["value"].split(".")[1]
+          c = json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))
+          for k in ("sub", "aud", "ref", "repository"):
+              print(f"{k}: {c.get(k)}")'
+          echo "AWS 側の信頼条件の sub は repo:<owner>/<repo>:ref:refs/heads/main。違っていればここが原因"
+          echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
       - name: 状態バッジを更新する
         env:
