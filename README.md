@@ -89,11 +89,12 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
    keys=$(curl -s https://github.com/<GitHub ユーザー名>.keys); for f in ~/.ssh/*.pub; do echo "$keys" | grep -qF "$(cut -d' ' -f2 "$f")" && echo "登録済み: ${f%.pub}"; done
    ```
 
-3. 何も出なければ、鍵を作って登録します。`~/.ssh/id_ed25519` は ssh が自動で試す名前なので、ほかの開発にもそのまま使えます
+3. 何も出なければ、鍵を作って登録します。`~/.ssh/id_ed25519` は ssh が自動で試す名前なので、ほかの開発にもそのまま使えます。
+   1行目は保存先を聞かれたらそのまま Enter、2行目で公開鍵をコピーしたら https://github.com/settings/ssh/new に貼って登録します
 
    ```bash
-   ssh-keygen -t ed25519            # 保存先はそのまま Enter で ~/.ssh/id_ed25519
-   pbcopy < ~/.ssh/id_ed25519.pub   # https://github.com/settings/ssh/new に貼って登録
+   ssh-keygen -t ed25519
+   pbcopy < ~/.ssh/id_ed25519.pub
    ```
 
    age が扱えるのは ed25519 と RSA の鍵だけです(ECDSA や `sk-` で始まる鍵は使えません)。
@@ -127,10 +128,15 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 
 ### 起動後の初期作業
 
-```bash
-# 全員: 4台に入れるか確かめる
-for h in isu1 isu2 isu3 bench; do ssh $h hostname; done
+全員、手元の PC で4台に入れるか確かめます。
 
+```bash
+for h in isu1 isu2 isu3 bench; do ssh $h hostname; done
+```
+
+サーバに入って、次をやります。
+
+```bash
 # 全台: 運営用ユーザーが残っていれば消す(他人の公開鍵が入っている)
 id isuadmin && sudo userdel -r isuadmin
 
@@ -143,10 +149,9 @@ sudo systemctl disable --now <上で出たサービス名>
 
 #### 共通
 
-**サーバのグローバル IP は、手元の PC で調べます。** サーバの中で実行すると、`/etc/hosts` に書いたプライベート IP の名前(`isu1` など)が返ってくるだけです。
+**サーバのグローバル IP は、手元の PC で次を実行して調べます。** サーバの中で実行すると、`/etc/hosts` に書いたプライベート IP の名前(`isu1` など)が返ってくるだけです。
 
 ```bash
-# 手元の PC で実行
 ssh -G isu1 | awk '/^hostname /{print $2}'
 ```
 
@@ -157,9 +162,9 @@ ssh -G isu1 | awk '/^hostname /{print $2}'
 
 ISUCON の回はアプリが独自ドメインと自己署名証明書の HTTPS で動くので、ブラウザで見るには手元の `/etc/hosts` に1行足します。
 次に建てると IP が変わるので、練習が終わったらその行を消してください。
+手元の PC で実行します(`<ドメイン>` は回ごとに下を見てください)。
 
 ```bash
-# 手元の PC で実行(<ドメイン> は回ごとに下を見る)
 echo "$(ssh -G isu1 | awk '/^hostname /{print $2}') <ドメイン>" | sudo tee -a /etc/hosts
 ```
 

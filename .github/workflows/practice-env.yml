@@ -213,10 +213,11 @@ jobs:
             echo
             echo '下のブロックを**丸ごと1回で**コピーして、手元のターミナルに貼り付けます。'
             echo "暗号文を GitHub に登録した SSH 秘密鍵で復号し、前に足した \`$hosts\` の設定(回は問わない)を消してから、新しい設定を末尾に足します。"
-            echo '秘密鍵が `~/.ssh/id_ed25519` でなければ、貼る前に1行目の `K=` を自分の鍵に書き換えてください。'
+            echo '1行目の `K=` は、GitHub に登録した秘密鍵です。`~/.ssh/id_ed25519` でなければ、貼る前に自分の鍵に書き換えてください。'
             echo
             echo '```bash'
-            echo 'K=~/.ssh/id_ed25519   # GitHub に登録した秘密鍵'
+            # macOS 標準の zsh は対話シェルで # をコメントとして扱わないので、貼るブロックにコメントを書かない
+            echo 'K=~/.ssh/id_ed25519'
             echo "cfg=\$(age -d -i \"\$K\" <<'EOF'"
             cat ssh_config.age
             echo 'EOF'
@@ -231,8 +232,10 @@ jobs:
             echo
             echo "### 2. サーバに入る"
             echo
+            echo '1行目で全台に入れるか確かめてから、入ります。'
+            echo
             echo '```bash'
-            echo "for h in $hosts; do ssh \$h hostname; done   # 全台に入れるか確かめる"
+            echo "for h in $hosts; do ssh \$h hostname; done"
             echo "ssh $first"
             echo '```'
             echo
