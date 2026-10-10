@@ -52,6 +52,7 @@ jobs:
       # name を付けると、スタック名は <回>-<name>(例: isucon14-2)
       STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
       NAME: ${{ inputs.name }}
+      PROBLEM: ${{ inputs.problem }}
       GITHUB_USERS: ${{ secrets.ISUCON_GITHUB_USERS }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,7 +89,7 @@ jobs:
           # ISUCON の AMI ID は matsuu/aws-isucon、private-isu は catatsuy/private-isu の README から。
           # 差し替えられたらここを直す
           count=3; http=false; type=c5.large; bench=c5.xlarge
-          case "$STACK" in
+          case "$PROBLEM" in
             isucon14)         ami=ami-0fcf9e8e8675a9ee4; vol=20 ;;
             isucon13)         ami=ami-006d211cb716fe8a0; vol=40 ;;
             isucon12-qualify) ami=ami-073140ad092048333; vol=20 ;;
@@ -96,7 +97,7 @@ jobs:
             # 1台構成の問題。インスタンスタイプは公式の推奨値、アプリは 80 番
             private-isu)      ami=ami-09201e964bee13733; vol=30
                               count=1; http=true; type=c7a.large; bench=c7a.xlarge ;;
-            *) echo "::error::未知の回: $STACK"; exit 1 ;;
+            *) echo "::error::未知の回: $PROBLEM"; exit 1 ;;
           esac
           if [ -z "$GITHUB_USERS" ]; then
             echo "::error::Secret ISUCON_GITHUB_USERS が空です"; exit 1
@@ -153,34 +154,96 @@ jobs:
           # 2つ目以降の環境は、手元の ~/.ssh/config で1つ目とぶつからないよう
           # Host を isu1-<name> の形にする(サーバの中の名前は isu1 のまま)
           suffix=${NAME:+-$NAME}
-          config=""
+          # 手元で前回の分を消せるよう、目印で囲む。目印は回ではなく Host 名の組
+          # (name)ごとにし、別の回を作ったときも同じ isu1 などを置き換える。
+          # 作り直すたびに IP とホスト鍵が変わるので、known_hosts には記録しない
+          mark="isucon-practice$suffix"
+          config="# >>> $mark >>> $STACK"$'\n'
+          hosts=""
           for h in isu1 isu2 isu3 bench; do
             ip=$(aws cloudformation describe-stacks --stack-name "$STACK" \
               --query "Stacks[0].Outputs[?OutputKey=='$h'].OutputValue" --output text)
             [ -z "$ip" ] && continue # 1台構成では isu2 / isu3 が無い
             echo "::add-mask::$ip"
-            config+=$(printf 'Host %s\n  HostName %s\n  User isucon\n\n' "$h$suffix" "$ip")$'\n\n'
+            config+="Host $h$suffix
+            HostName $ip
+            User isucon
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+          "
+            hosts+="${hosts:+ }$h$suffix"
           done
+          config+="# <<< $mark <<<"$'\n'
           printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
+
+          # 回ごとの資料(各回のリポジトリ README と ISUCON 公式 Blog から)
+          case "$PROBLEM" in
+            isucon14)
+              docs="- [当日マニュアル](https://github.com/isucon/isucon14/blob/main/docs/manual.md)
+          - [アプリケーションマニュアル(ISURIDE)](https://github.com/isucon/isucon14/blob/main/docs/ISURIDE.md)
+          - [出題動画(YouTube)](https://www.youtube.com/watch?v=UFlcAUvWvrY)
+          - [問題の解説と講評](https://isucon.net/archives/58869617.html)(ネタバレあり)" ;;
+            isucon13)
+              docs="- [当日マニュアル](https://github.com/isucon/isucon13/blob/main/docs/cautionary_note.md)
+          - [アプリケーションマニュアル(ISUPipe)](https://github.com/isucon/isucon13/blob/main/docs/isupipe.md)
+          - [問題の解説と講評](https://isucon.net/archives/58001272.html)(ネタバレあり)" ;;
+            isucon12-qualify)
+              docs="- [当日マニュアル](https://gist.github.com/mackee/4320c18919c8f6f1867849378a17e651)
+          - [アプリケーションマニュアル(ISUPORTS)](https://gist.github.com/mackee/460eeb8040389ed5bdeaf2c48327707c)
+          - [問題の解説と講評](https://isucon.net/archives/56850281.html)(ネタバレあり)" ;;
+            isucon11-qualify)
+              docs="- [当日マニュアル](https://github.com/isucon/isucon11-qualify/blob/main/docs/manual.md)
+          - [アプリケーションマニュアル(ISUCONDITION)](https://github.com/isucon/isucon11-qualify/blob/main/docs/isucondition.md)
+          - [問題の解説と講評](https://isucon.net/archives/56044867.html)(ネタバレあり)" ;;
+            private-isu)
+              docs="- [当日マニュアル](https://github.com/catatsuy/private-isu/blob/master/manual.md)
+          - [リポジトリの README](https://github.com/catatsuy/private-isu)" ;;
+          esac
+          readme="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/README.md"
+          first=${hosts%% *}
 
           {
             echo "## $STACK を作成しました"
             echo
-            echo '下の暗号文をコピーして、手元で復号してください(GitHub に登録した SSH 秘密鍵で開けます)。'
+            echo "### 1. 手元の ~/.ssh/config に接続先を入れる"
+            echo
+            echo '下のブロックを**丸ごと1回で**コピーして、手元のターミナルに貼り付けます。'
+            echo "暗号文を GitHub に登録した SSH 秘密鍵で復号し、前に足した \`$hosts\` の設定(回は問わない)を消してから、新しい設定を末尾に足します。"
+            echo '秘密鍵が `~/.ssh/id_ed25519` でなければ、貼る前に1行目の `K=` を自分の鍵に書き換えてください。'
             echo
             echo '```bash'
-            echo 'pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例'
-            echo '```'
-            echo
-            echo '```'
+            echo 'K=~/.ssh/id_ed25519   # GitHub に登録した秘密鍵'
+            echo "cfg=\$(age -d -i \"\$K\" <<'EOF'"
             cat ssh_config.age
+            echo 'EOF'
+            echo ') && touch ~/.ssh/config && \'
+            echo "perl -0pi -e 's/^# >>> $mark >>>.*?^# <<< $mark <<<\\n//msg' ~/.ssh/config && \\"
+            echo 'printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"' >> ~/.ssh/config && \'
+            echo "echo 追加しました: $hosts"
+            echo "if [ \"\$(grep -c '^Host $first\$' ~/.ssh/config)\" -gt 1 ]; then echo \"注意: 目印の無い古い Host $first が残っています。~/.ssh/config から手で消してください\"; fi"
             echo '```'
             echo
-            if [ -n "$NAME" ]; then
-              echo "ssh の Host 名は \`isu1$suffix\` / \`isu2$suffix\` / \`isu3$suffix\` / \`bench$suffix\` です。"
-              echo
-            fi
-            echo "終わったら Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
+            echo '`age: error: no identity matched` と出たら、その鍵は GitHub に登録されていません(README の「メンバーの事前準備」を見てください)。'
+            echo
+            echo "### 2. サーバに入る"
+            echo
+            echo '```bash'
+            echo "for h in $hosts; do ssh \$h hostname; done   # 全台に入れるか確かめる"
+            echo "ssh $first"
+            echo '```'
+            echo
+            echo "最初にやること(運営用ユーザーの削除、bench 機のアプリ停止)は [README の「起動後の初期作業」]($readme#起動後の初期作業) にあります。"
+            echo
+            echo "### 3. 問題を読む"
+            echo
+            echo "$docs"
+            echo
+            echo "Web ページの開き方とベンチの回し方は [README の「回ごとの使い方」]($readme#回ごとの使い方web-ページとベンチ) にあります。"
+            echo
+            echo "### 4. 終わったら消す"
+            echo
+            echo "サーバ上の変更は消えるので、先にチームのリポジトリへ push してから、Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
             echo '消し忘れても毎日 05:00 JST に自動で削除されます。'
           } >> "$GITHUB_STEP_SUMMARY"
 

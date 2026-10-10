@@ -104,27 +104,22 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 ### 作る
 
 1. 「Actions」→「practice-env」→「Run workflow」で、`action` を `up`、`problem` を練習する回にして実行します
-2. 5分前後で終わります。実行結果の Summary に暗号化された `ssh_config` が出るので、コピーして手元で復号してください
+2. 5分前後で終わります。実行結果の Summary に、手元で貼り付けるコマンドのブロックが出ます。
+   **ブロックを丸ごと1回でコピーして**、手元のターミナルに貼り付けてください(秘密鍵が `~/.ssh/id_ed25519` でなければ、1行目の `K=` を書き換えてから)。
+   中に入っている暗号化した `ssh_config` を復号し、前に足した設定を消してから、新しい設定を `~/.ssh/config` の末尾に足します
 
-   ```bash
-   pbpaste | age -d -i ~/.ssh/id_ed25519 >> ~/.ssh/config   # macOS の例
-   ```
+   - 足す設定は `# >>> isucon-practice >>>` 〜 `# <<< isucon-practice <<<` の目印で囲まれています。次に作ったとき(別の回でも)、この範囲が丸ごと置き換わります
+   - サーバは作るたびに IP とホスト鍵が変わるので、この設定では known_hosts に記録せず、ホスト鍵の確認もしません
+   - 目印の無い古い `Host isu1` などが残っていると、ssh は先に書かれたほうを使います。注意が出たら手で消してください
 
-   鍵が `id_ed25519` / `id_rsa` 以外の名前なら、ssh が自動では試さないので `IdentityFile` も書き足します
-
-   ```bash
-   K=~/.ssh/<鍵の名前>
-   pbpaste | age -d -i $K | awk -v k="$K" '{print} /^  User isucon$/{print "  IdentityFile " k "\n  IdentitiesOnly yes"}' >> ~/.ssh/config
-   ```
-
-3. `ssh isu1` で入れます(ユーザーは `isucon`)
+3. Summary の続きに、サーバに入るコマンドと、その回のマニュアル・出題動画・解説へのリンクが出ます。`ssh isu1` で入れます(ユーザーは `isucon`)
 
 #### 同じ回を複数建てる
 
 チームを分けて同じ回を同時に解くときは、2つ目以降の `up` で `name` に区別用の名前(英小文字と数字で10文字まで。例: `2`)を入れます。
 
 - スタック名は `<回>-<name>`(例: `isucon14-2`)になり、1つ目とは別の VPC・別の IP で建ちます
-- 手元の `ssh_config` の Host 名は `isu1-2` / `isu2-2` / `isu3-2` / `bench-2` になり、1つ目の `isu1` などとぶつかりません。
+- 手元の `ssh_config` の Host 名は `isu1-2` / `isu2-2` / `isu3-2` / `bench-2` になり、1つ目の `isu1` などとぶつかりません(目印も `isucon-practice-2` と別になるので、貼っても1つ目の設定は消えません)。
   サーバの中では今までどおり `isu1` / `bench` などの名前とプライベート IP(192.168.0.10〜13)で届きます
 - ブラウザで見るための手元の `/etc/hosts` はドメインが同じなので、1台の PC からはどちらか一方しか向けられません(見る側の環境の行だけ残します)
 - 消すときも、作ったときと同じ `problem` と `name` で `down` します
@@ -134,7 +129,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 
 ```bash
 # 全員: 4台に入れるか確かめる
-for h in isu1 isu2 isu3 bench; do ssh -o StrictHostKeyChecking=accept-new $h hostname; done
+for h in isu1 isu2 isu3 bench; do ssh $h hostname; done
 
 # 全台: 運営用ユーザーが残っていれば消す(他人の公開鍵が入っている)
 id isuadmin && sudo userdel -r isuadmin
@@ -274,7 +269,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
 | `age: error: no identity matched any of the recipients` | 使った秘密鍵が、自分の GitHub アカウントに登録されていない(または `ISUCON_GITHUB_USERS` に自分が入っていない)。「メンバーの事前準備」の手順2で確かめ、鍵を登録してから `down` → `up` で作り直す |
-| `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。`-i` に自分の鍵を指定する |
+| `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。貼り付けるブロックの1行目 `K=` を自分の鍵にする |
 | `ssh_config` を復号できない(上以外) | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
 | `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San@8444945/isucon-practice-env@1404043632:ref:refs/heads/main` と一致するか見る(GitHub の新しい形式。リポジトリを作り直すと ID が変わるので、`bootstrap.sh` を実行し直す) |
 | バッジが表示されない | `status` で1回実行する |
