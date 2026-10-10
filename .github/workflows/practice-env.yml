@@ -18,6 +18,10 @@ on:
         description: "練習する回(スタック名になる)"
         type: choice
         options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu]
+      name:
+        description: "同じ回を複数建てるときの区別(英小文字と数字で10文字まで。例: 2, b)。空なら1つ目。公開ログに出るので GitHub ユーザー名は避ける"
+        type: string
+        default: ""
   schedule:
     # 消し忘れの安全網: 毎日 05:00 JST に残っている練習環境をすべて削除する
     - cron: "0 20 * * *"
@@ -26,9 +30,10 @@ permissions:
   contents: write # 状態バッジを isucon-status ブランチへ push するため
   id-token: write # AWS へ OIDC で入るため
 
-# 作成と削除が同時に走らないよう直列化する
+# 同じスタックの作成と削除が同時に走らないよう、スタックごとに直列化する。
+# 別のスタック(回や name が違うもの)は並行して作れる
 concurrency:
-  group: practice-env
+  group: practice-env-${{ inputs.problem }}-${{ inputs.name }}
   cancel-in-progress: false
 
 env:
@@ -44,10 +49,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STACK: ${{ inputs.problem }}
+      # name を付けると、スタック名は <回>-<name>(例: isucon14-2)
+      STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
+      NAME: ${{ inputs.name }}
       GITHUB_USERS: ${{ secrets.ISUCON_GITHUB_USERS }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: name の形を確かめる
+        run: |
+          if ! [[ "$NAME" =~ ^[a-z0-9]{0,10}$ ]]; then
+            echo "::error::name は英小文字と数字で10文字までにしてください"; exit 1
+          fi
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
@@ -137,13 +150,16 @@ jobs:
           done
           sed -i '/^$/d' recipients.txt
 
+          # 2つ目以降の環境は、手元の ~/.ssh/config で1つ目とぶつからないよう
+          # Host を isu1-<name> の形にする(サーバの中の名前は isu1 のまま)
+          suffix=${NAME:+-$NAME}
           config=""
           for h in isu1 isu2 isu3 bench; do
             ip=$(aws cloudformation describe-stacks --stack-name "$STACK" \
               --query "Stacks[0].Outputs[?OutputKey=='$h'].OutputValue" --output text)
             [ -z "$ip" ] && continue # 1台構成では isu2 / isu3 が無い
             echo "::add-mask::$ip"
-            config+=$(printf 'Host %s\n  HostName %s\n  User isucon\n\n' "$h" "$ip")$'\n\n'
+            config+=$(printf 'Host %s\n  HostName %s\n  User isucon\n\n' "$h$suffix" "$ip")$'\n\n'
           done
           printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
 
@@ -160,7 +176,11 @@ jobs:
             cat ssh_config.age
             echo '```'
             echo
-            echo '終わったら Actions の「practice-env」を `down` で実行してください。'
+            if [ -n "$NAME" ]; then
+              echo "ssh の Host 名は \`isu1$suffix\` / \`isu2$suffix\` / \`isu3$suffix\` / \`bench$suffix\` です。"
+              echo
+            fi
+            echo "終わったら Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
             echo '消し忘れても毎日 05:00 JST に自動で削除されます。'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -176,9 +196,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STACK: ${{ inputs.problem }}
+      # name を付けると、スタック名は <回>-<name>(例: isucon14-2)
+      STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
+      NAME: ${{ inputs.name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: name の形を確かめる
+        run: |
+          if ! [[ "$NAME" =~ ^[a-z0-9]{0,10}$ ]]; then
+            echo "::error::name は英小文字と数字で10文字までにしてください"; exit 1
+          fi
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
