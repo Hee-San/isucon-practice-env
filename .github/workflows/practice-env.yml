@@ -177,32 +177,6 @@ jobs:
           config+="# <<< $mark <<<"$'\n'
           printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
 
-          # 回ごとの資料(各回のリポジトリ README、ISUCON 公式 Blog、公式 YouTube チャンネルから)
-          case "$PROBLEM" in
-            isucon14)
-              docs="- [当日マニュアル](https://github.com/isucon/isucon14/blob/main/docs/manual.md)
-          - [アプリケーションマニュアル(ISURIDE)](https://github.com/isucon/isucon14/blob/main/docs/ISURIDE.md)
-          - [出題動画(YouTube)](https://www.youtube.com/watch?v=UFlcAUvWvrY)
-          - [問題の解説と講評](https://isucon.net/archives/58869617.html)(ネタバレあり)" ;;
-            isucon13)
-              docs="- [当日マニュアル](https://github.com/isucon/isucon13/blob/main/docs/cautionary_note.md)
-          - [アプリケーションマニュアル(ISUPipe)](https://github.com/isucon/isucon13/blob/main/docs/isupipe.md)
-          - [出題動画(YouTube)](https://www.youtube.com/watch?v=OOyInZbM85k)
-          - [問題の解説と講評](https://isucon.net/archives/58001272.html)(ネタバレあり)" ;;
-            isucon12-qualify)
-              docs="- [当日マニュアル](https://gist.github.com/mackee/4320c18919c8f6f1867849378a17e651)
-          - [アプリケーションマニュアル(ISUPORTS)](https://gist.github.com/mackee/460eeb8040389ed5bdeaf2c48327707c)
-          - [出題動画(YouTube)](https://www.youtube.com/watch?v=75YnJ_3289g)
-          - [問題の解説と講評](https://isucon.net/archives/56850281.html)(ネタバレあり)" ;;
-            isucon11-qualify)
-              docs="- [当日マニュアル](https://github.com/isucon/isucon11-qualify/blob/main/docs/manual.md)
-          - [アプリケーションマニュアル(ISUCONDITION)](https://github.com/isucon/isucon11-qualify/blob/main/docs/isucondition.md)
-          - [出題動画(YouTube)](https://www.youtube.com/watch?v=P-iJ01-riTw)
-          - [問題の解説と講評](https://isucon.net/archives/56044867.html)(ネタバレあり)" ;;
-            private-isu)
-              docs="- [当日マニュアル](https://github.com/catatsuy/private-isu/blob/master/manual.md)
-          - [リポジトリの README](https://github.com/catatsuy/private-isu)" ;;
-          esac
           readme="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/README.md"
           first=${hosts%% *}
 
@@ -222,8 +196,10 @@ jobs:
             cat ssh_config.age
             echo 'EOF'
             echo ') && touch ~/.ssh/config && \'
-            echo "perl -0pi -e 's/^# >>> $mark >>>.*?^# <<< $mark <<<\\n//msg' ~/.ssh/config && \\"
-            echo 'printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"' >> ~/.ssh/config && \'
+            # perl -i はシンボリックリンクを普通のファイルに置き換えるので、
+            # 中身を変数に読んでから > で書き戻す(リンク先と権限がそのまま残る)
+            echo "old=\$(perl -0pe 's/^# >>> $mark >>>.*?^# <<< $mark <<<\\n//msg' ~/.ssh/config) && \\"
+            echo '{ [ -n "$old" ] && printf '"'"'%s\n'"'"' "$old"; printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"'; } > ~/.ssh/config && \'
             echo "echo 追加しました: $hosts"
             echo "if [ \"\$(grep -c '^Host $first\$' ~/.ssh/config)\" -gt 1 ]; then echo \"注意: 目印の無い古い Host $first が残っています。~/.ssh/config から手で消してください\"; fi"
             echo '```'
@@ -241,13 +217,13 @@ jobs:
             echo
             echo "最初にやること(運営用ユーザーの削除、bench 機のアプリ停止)は [README の「起動後の初期作業」]($readme#起動後の初期作業) にあります。"
             echo
-            echo "### 3. 問題を読む"
+            # 回ごとの資料・Web ページ・ベンチは docs/problems/<回>.md に書いてある。
+            # name 付きの環境では、手元で打つ ssh の Host 名を isu1-<name> などに置き換える
+            perl -pe "s/\b(ssh(?: -G| -L \S+)?) (isu[123]|bench)\b/\$1 \$2$suffix/g" "docs/problems/$PROBLEM.md"
             echo
-            echo "$docs"
+            echo '本番のポータルにあった質問・アナウンス・リーダーボードと、環境チェック(envcheck)は、この環境にはありません。スコアはチームで記録してください。'
             echo
-            echo "Web ページの開き方とベンチの回し方は [README の「回ごとの使い方」]($readme#回ごとの使い方web-ページとベンチ) にあります。"
-            echo
-            echo "### 4. 終わったら消す"
+            echo "### 6. 終わったら消す"
             echo
             echo "サーバ上の変更は消えるので、先にチームのリポジトリへ push してから、Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
             echo '消し忘れても毎日 05:00 JST に自動で削除されます。'
