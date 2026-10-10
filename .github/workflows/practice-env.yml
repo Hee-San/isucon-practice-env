@@ -217,13 +217,23 @@ jobs:
             echo
             echo "最初にやること(運営用ユーザーの削除、bench 機のアプリ停止)は [README の「起動後の初期作業」]($readme#起動後の初期作業) にあります。"
             echo
-            # 回ごとの資料・Web ページ・ベンチは docs/problems/<回>.md に書いてある。
-            # name 付きの環境では、手元で打つ ssh の Host 名を isu1-<name> などに置き換える
-            perl -pe "s/\b(ssh(?: -G| -L \S+)?) (isu[123]|bench)\b/\$1 \$2$suffix/g" "docs/problems/$PROBLEM.md"
+            echo "### 3. ポータルの代わり"
             echo
-            echo '本番のポータルにあった質問・アナウンス・リーダーボードと、環境チェック(envcheck)は、この環境にはありません。スコアはチームで記録してください。'
+            echo '当日マニュアルでポータルを使うところは、この環境では次のようにします。'
             echo
-            echo "### 6. 終わったら消す"
+            echo '| 本番のポータル | この環境 |'
+            echo '|---|---|'
+            echo "| サーバーリスト(IP アドレス) | 手元で \`ssh -G $first \\| awk '/^hostname /{print \$2}'\`(この Summary には IP を出していません) |"
+            echo '| 負荷走行の実行(Job Enqueue Form)と結果 | bench 機でベンチを実行し、その出力を見る(下の「ベンチを回す」) |'
+            echo '| 質問・アナウンス・リーダーボード | ありません。スコアはチームで記録してください |'
+            echo '| 環境チェック(envcheck) | ありません(結果をポータルに送るためのもの) |'
+            echo
+            # 回ごとの資料・Web ページ・ベンチは docs/problems/<回>.md に書いてあり、
+            # 見出しの番号はここで振る(4 から)
+            scripts/render-problem.sh "docs/problems/$PROBLEM.md" 4 "$NAME"
+            last=$((3 + $(grep -c '^## ' "docs/problems/$PROBLEM.md")))
+            echo
+            echo "### $((last + 1)). 終わったら消す"
             echo
             echo "サーバ上の変更は消えるので、先にチームのリポジトリへ push してから、Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
             echo '消し忘れても毎日 05:00 JST に自動で削除されます。'

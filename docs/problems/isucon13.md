@@ -1,4 +1,6 @@
-### 3. 問題を読む
+# ISUCON13
+
+## 問題を読む
 
 - [当日マニュアル](https://github.com/isucon/isucon13/blob/main/docs/cautionary_note.md)
 - [アプリケーションマニュアル(ISUPipe)](https://github.com/isucon/isucon13/blob/main/docs/isupipe.md)
@@ -10,22 +12,17 @@
 - ドメインは、マニュアルの `*.u.isucon.dev` ではなく `*.u.isucon.local` です(`.dev` は正規の証明書が無いとブラウザで開けないため)
 - TLS 証明書は自己署名です
 
-### 4. Web ページを開く
+## Web ページを開く
 
-マニュアルの「ポータルのサーバーリストの IP」は、手元で `ssh -G isu1 | awk '/^hostname /{print $2}'` を実行すると分かります。
-下のブロックを手元のターミナルに貼ると、`/etc/hosts` にその IP と `pipe.u.isucon.local` などを書きます(sudo のパスワードを聞かれます。前にこの手順で足した行は消えます)。
-ほかのサブドメインを見たいときは、同じ行に足してください。
+手元の `/etc/hosts` に、isu1 の IP と `pipe.u.isucon.local` などを書きます。作成時の Summary に出るブロックを、手元のターミナルに貼ってください(sudo のパスワードを聞かれます。前にこの手順で書いた行は消えます)。
+ほかのサブドメインを見たいときは、書かれた行の末尾の `# isucon-practice` の前に足してください。
 
-```bash
-ip=$(ssh -G isu1 | awk '/^hostname /{print $2}')
-h=$(grep -v 'isucon-practice$' /etc/hosts) && printf '%s\n' "$h" "$ip pipe.u.isucon.local test001.u.isucon.local # isucon-practice" | sudo tee /etc/hosts > /dev/null
-```
+<!-- hosts: pipe.u.isucon.local test001.u.isucon.local -->
 
 https://pipe.u.isucon.local/ を開きます。証明書の警告は越えてください。
 
-### 5. ベンチを回す(未検証)
+## ベンチを回す(未検証)
 
-本番でポータルの「Job Enqueue Form」から頼んでいた負荷走行は、bench 機で直接実行し、結果はその出力で見ます。
 打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
 
 初回だけ、次の2つをやります。

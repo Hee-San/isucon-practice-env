@@ -31,6 +31,7 @@ read_state() {
 
 # バッジの SVG を作って isucon-status ブランチへ置く
 push_badge() {
+  local out
   out=$(mktemp -d)
   python3 - "$msg" "$color" "$out/badge.svg" <<'PY'
 import sys
@@ -67,6 +68,7 @@ PY
     -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     commit -qm "status: $msg"
   git -C "$out" push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:isucon-status
+  rm -rf -- "$out"
 }
 
 # 作成・削除は並行して走るので、古い状態を読んだ実行が後から push すると
@@ -77,5 +79,8 @@ for _ in 1 2 3 4 5; do
   pushed="$msg$color"
   push_badge
   read_state
-  if [ "$msg$color" = "$pushed" ]; then break; fi
+  if [ "$msg$color" = "$pushed" ]; then
+    exit 0
+  fi
 done
+echo "::warning::状態が変わり続けたため、バッジが最新でない可能性があります(次に実行したときに直ります)"

@@ -1,4 +1,6 @@
-### 3. 問題を読む
+# ISUCON11 予選
+
+## 問題を読む
 
 - [当日マニュアル](https://github.com/isucon/isucon11-qualify/blob/main/docs/manual.md)
 - [アプリケーションマニュアル(ISUCONDITION)](https://github.com/isucon/isucon11-qualify/blob/main/docs/isucondition.md)
@@ -7,10 +9,11 @@
 
 使っている AMI([matsuu/aws-isucon](https://github.com/matsuu/aws-isucon/tree/main/isucon11-qualify))は、JIA のモック(5000 番)が常に動いています。
 
-### 4. Web ページを開く
+## Web ページを開く
 
-マニュアルの「ポータルの IP」は、手元で `ssh -G isu1 | awk '/^hostname /{print $2}'` を実行すると分かります。
-`https://<その IP>/` を開きます。証明書の警告は越えてください(Firefox だと開けないことがあります)。
+作成時の Summary に出るブロックを手元のターミナルに貼ると、開く URL が出ます。証明書の警告は越えてください(Firefox だと開けないことがあります)。
+
+<!-- url: https -->
 
 ログインには、isu1 の JIA モックへのポート転送が要ります。手元で次を実行したまま、ブラウザでログインします。
 macOS で 5000 番が使われているときは、配布元の [README](https://github.com/matsuu/aws-isucon/tree/main/isucon11-qualify) を見てください。
@@ -19,9 +22,8 @@ macOS で 5000 番が使われているときは、配布元の [README](https:/
 ssh -L 5000:127.0.0.1:5000 isu1
 ```
 
-### 5. ベンチを回す(未検証)
+## ベンチを回す(未検証)
 
-本番でポータルの「Job Enqueue Form」から頼んでいた負荷走行は、bench 機で直接実行し、結果はその出力で見ます。
 打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
 
 初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります。`ssh bench` で入って、次で出たサービスを `sudo systemctl disable --now <サービス名>` で止めます。

@@ -161,18 +161,19 @@ ssh -G isu1 | awk '/^hostname /{print $2}'
 初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります(止めるサービス名は回ごとのファイルにあります)。
 
 ISUCON の回はアプリが独自ドメインと自己署名証明書の HTTPS で動くので、ブラウザで見るには手元の `/etc/hosts` に1行足します。
-回ごとのファイルにあるブロックを貼ると、末尾が `# isucon-practice` の行として足し、前に足した行は消します。
+作成時の Summary に出るブロックを貼ると、行末に ` # isucon-practice` の目印を付けて1行足し、前に足した行は消します。
 練習が終わったら、手元の PC で次を実行してその行を消してください。
 
 ```bash
-h=$(grep -v 'isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /etc/hosts > /dev/null
+h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /etc/hosts > /dev/null
 ```
 
 #### 回ごと
 
 作成時の Summary に、その回の分がそのまま出ます。あとから見るときは次を開いてください。
 `name` を付けて作った環境では、手元で打つ `ssh isu1` などを `ssh isu1-<name>` に読み替えてください(Summary では置き換えて出します)。
-資料(当日マニュアル・アプリケーションマニュアル・出題動画・解説)、本番のポータルの代わりにやること(IP の確認・`/etc/hosts`・ベンチ)、使っている AMI の本番との違いが書いてあります。
+資料(当日マニュアル・アプリケーションマニュアル・出題動画・解説)、Web ページの開き方、ベンチの回し方、使っている AMI の本番との違いが書いてあります。
+`/etc/hosts` に書くブロックは、isu1 の IP を使うので作成時の Summary にだけ出ます。
 
 | 回 | ファイル |
 |---|---|
@@ -252,3 +253,4 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
 | `docs/problems/<回>.md` | 回ごとの資料・Web ページ・ベンチ。作成時の Summary にも出す |
+| `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |
