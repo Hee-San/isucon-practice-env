@@ -45,8 +45,13 @@ url_block() { # url_block <http か https>
 # 本文の「作成時の Summary に出るブロック」は、Summary の中では「下のブロック」になる
 perl -pe "s/\b(ssh(?: -G| -L \S+)?) (isu[123]|bench)\b/\$1 \$2$suffix/g; s/作成時の Summary に出るブロック/下のブロック/g" "$file" |
   while IFS= read -r line; do
+    # 先頭の見出しの直後の空行は落とす(Summary では前の節と空行が重なるため)
+    if [ -n "${after_title:-}" ]; then
+      after_title=
+      [ -z "$line" ] && continue
+    fi
     case "$line" in
-      '# '*) IFS= read -r line || true ;; # 見出しと、その後ろの空行を落とす
+      '# '*) after_title=1 ;;
       '## '*)
         echo "### $n. ${line#'## '}"
         n=$((n + 1))

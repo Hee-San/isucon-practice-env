@@ -156,7 +156,10 @@ jobs:
           suffix=${NAME:+-$NAME}
           # 手元で前回の分を消せるよう、目印で囲む。目印は回ではなく Host 名の組
           # (name)ごとにし、別の回を作ったときも同じ isu1 などを置き換える。
-          # 作り直すたびに IP とホスト鍵が変わるので、known_hosts には記録しない
+          # 作り直すたびに IP とホスト鍵が変わるので、known_hosts には記録しない。
+          # 手元では ~/.ssh/config の先頭に置く(ssh は先に書かれた値を使うので、
+          # 後ろにある Host * や目印の無い古い Host isu1 に負けない)。最後の Host * は、
+          # 元の先頭にあった Host 指定の無い行を、今までどおり全ホストに効かせるため
           mark="isucon-practice$suffix"
           config="# >>> $mark >>> $STACK"$'\n'
           hosts=""
@@ -174,7 +177,7 @@ jobs:
           "
             hosts+="${hosts:+ }$h$suffix"
           done
-          config+="# <<< $mark <<<"$'\n'
+          config+="Host *"$'\n'"# <<< $mark <<<"$'\n'
           printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
 
           readme="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/README.md"
@@ -186,7 +189,7 @@ jobs:
             echo "### 1. 手元の ~/.ssh/config に接続先を入れる"
             echo
             echo '下のブロックを**丸ごと1回で**コピーして、手元のターミナルに貼り付けます。'
-            echo "暗号文を GitHub に登録した SSH 秘密鍵で復号し、前に足した \`$hosts\` の設定(回は問わない)を消してから、新しい設定を末尾に足します。"
+            echo "暗号文を GitHub に登録した SSH 秘密鍵で復号し、前に足した \`$hosts\` の設定(回は問わない)を消してから、新しい設定を先頭に足します。"
             echo '1行目の `K=` は、GitHub に登録した秘密鍵です。`~/.ssh/id_ed25519` でなければ、貼る前に自分の鍵に書き換えてください。'
             echo
             echo '```bash'
@@ -199,9 +202,10 @@ jobs:
             # perl -i はシンボリックリンクを普通のファイルに置き換えるので、
             # 中身を変数に読んでから > で書き戻す(リンク先と権限がそのまま残る)
             echo "old=\$(perl -0pe 's/^# >>> $mark >>>.*?^# <<< $mark <<<\\n//msg' ~/.ssh/config) && \\"
-            echo '{ [ -n "$old" ] && printf '"'"'%s\n'"'"' "$old"; printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"'; } > ~/.ssh/config && \'
+            echo '{ printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"'; if [ -n "$old" ]; then printf '"'"'%s\n'"'"' "$old"; fi; } > ~/.ssh/config && \'
             echo "echo 追加しました: $hosts"
-            echo "if [ \"\$(grep -c '^Host $first\$' ~/.ssh/config)\" -gt 1 ]; then echo \"注意: 目印の無い古い Host $first が残っています。~/.ssh/config から手で消してください\"; fi"
+            # 先頭に置いても、後ろの古い同名の Host にある、こちらで指定していない項目(Port や ProxyJump など)は効くので知らせる
+            echo "if [ \"\$(grep -c '^Host $first\$' ~/.ssh/config)\" -gt 1 ]; then echo \"注意: 目印の無い古い Host $first が残っています。ポートなど、この設定に無い項目はそちらが効くので、~/.ssh/config から消してください\"; fi"
             echo '```'
             echo
             echo '`age: error: no identity matched` と出たら、その鍵は GitHub に登録されていません(README の「メンバーの事前準備」を見てください)。'
@@ -285,6 +289,15 @@ jobs:
 
       - name: スタックを削除する
         run: |
+          # 無いスタックを消しても成功になるので、name の打ち間違いで本物が残らないよう先に確かめる
+          if ! aws cloudformation describe-stacks --stack-name "$STACK" > /dev/null 2>&1; then
+            stacks=$(aws cloudformation describe-stacks \
+              --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].StackName" \
+              --output text)
+            stacks=$(echo $stacks) # タブ区切りを空白区切りにする
+            echo "::error::$STACK はありません。いまある練習環境: ${stacks:-なし}(problem と name を確かめてください)"
+            exit 1
+          fi
           aws cloudformation delete-stack --stack-name "$STACK"
           aws cloudformation wait stack-delete-complete --stack-name "$STACK"
           echo "## $STACK を削除しました" >> "$GITHUB_STEP_SUMMARY"
