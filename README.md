@@ -112,6 +112,8 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
    - 足す設定は `# >>> isucon-practice >>>` 〜 `# <<< isucon-practice <<<` の目印で囲まれています。次に作ったとき(別の回でも)、この範囲が丸ごと置き換わります
    - ssh は先に書かれた値を使うので、先頭に置けば、手元の `Host *` や目印の無い古い `Host isu1` などに負けません。
      範囲の最後の `Host *` は、元のファイルの先頭にあった Host 指定の無い行を、今までどおり全ホストに効かせるためのものです
+   - ただし、後ろの設定にある、この範囲で指定していない項目(`Port` や `ProxyJump` など)は効きます。
+     目印の無い古い `Host isu1` などが残っていると注意が出るので、手で消してください
    - サーバは作るたびに IP とホスト鍵が変わるので、この設定では known_hosts に記録せず、ホスト鍵の確認もしません
 
 3. Summary の続きに、サーバに入るコマンドと、その回のマニュアル・出題動画・解説へのリンクが出ます。`ssh isu1` で入れます(ユーザーは `isucon`)
@@ -130,7 +132,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 ### 起動後の初期作業
 
 全員、手元の PC で全台に入れるか確かめます(作成時の Summary に、その環境の台数と Host 名に合わせたコマンドが出ます)。
-private-isu は `isu1` と `bench` の2台、`name` 付きの環境は `isu1-<name>` などです。
+下は `name` を付けない ISUCON の回(4台)の例です。private-isu は `isu1` と `bench` の2台、`name` 付きの環境は `isu1-<name>` などに変えてください。
 
 ```bash
 for h in isu1 isu2 isu3 bench; do ssh $h hostname; done

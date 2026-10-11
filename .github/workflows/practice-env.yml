@@ -204,6 +204,8 @@ jobs:
             echo "old=\$(perl -0pe 's/^# >>> $mark >>>.*?^# <<< $mark <<<\\n//msg' ~/.ssh/config) && \\"
             echo '{ printf '"'"'%s\n'"'"' "$cfg" | awk -v k="$K" '"'"'{print} /^  User isucon$/{print "  IdentityFile " k; print "  IdentitiesOnly yes"}'"'"'; if [ -n "$old" ]; then printf '"'"'%s\n'"'"' "$old"; fi; } > ~/.ssh/config && \'
             echo "echo 追加しました: $hosts"
+            # 先頭に置いても、後ろの古い同名の Host にある、こちらで指定していない項目(Port や ProxyJump など)は効くので知らせる
+            echo "if [ \"\$(grep -c '^Host $first\$' ~/.ssh/config)\" -gt 1 ]; then echo \"注意: 目印の無い古い Host $first が残っています。ポートなど、この設定に無い項目はそちらが効くので、~/.ssh/config から消してください\"; fi"
             echo '```'
             echo
             echo '`age: error: no identity matched` と出たら、その鍵は GitHub に登録されていません(README の「メンバーの事前準備」を見てください)。'
