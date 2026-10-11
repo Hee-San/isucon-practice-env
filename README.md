@@ -122,7 +122,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 - スタック名は `<回>-<name>`(例: `isucon14-2`)になり、1つ目とは別の VPC・別の IP で建ちます
 - 手元の `ssh_config` の Host 名は `isu1-2` / `isu2-2` / `isu3-2` / `bench-2` になり、1つ目の `isu1` などとぶつかりません(目印も `isucon-practice-2` と別になるので、貼っても1つ目の設定は消えません)。
   サーバの中では今までどおり `isu1` / `bench` などの名前とプライベート IP(192.168.0.10〜13)で届きます
-- ブラウザで見るための手元の `/etc/hosts` はドメインが同じなので、1台の PC からはどちらか一方しか向けられません(見る側の環境の行だけ残します)
+- ブラウザで見るための手元の `/etc/hosts` はドメインが同じなので、1台の PC からはどちらか一方しか向けられません(最後に貼った環境の行だけが残ります)
 - 消すときも、作ったときと同じ `problem` と `name` で `down` します
 - `name` は公開のログやバッジに出るので、GitHub ユーザー名は避けてください
 
@@ -158,67 +158,30 @@ ssh -G isu1 | awk '/^hostname /{print $2}'
 逆に、サーバの中では `isu1` / `isu2` / `isu3` / `bench` の名前でプライベート IP(192.168.0.10〜13)に届きます。ベンチの向き先やサーバ間の接続には、こちらを使います。
 
 ベンチは bench 機に入って実行します。打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
-初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります(止めるサービス名は回ごとに下に書きます)。
+初回だけ、bench 機で動いているアプリを止めて、ベンチに CPU を譲ります(止めるサービス名は回ごとのファイルにあります)。
 
 ISUCON の回はアプリが独自ドメインと自己署名証明書の HTTPS で動くので、ブラウザで見るには手元の `/etc/hosts` に1行足します。
-次に建てると IP が変わるので、練習が終わったらその行を消してください。
-手元の PC で実行します(`<ドメイン>` は回ごとに下を見てください)。
+作成時の Summary に出るブロックを貼ると、行末に ` # isucon-practice` の目印を付けて1行足し、前に足した行は消します。
+練習が終わったら、手元の PC で次を実行してその行を消してください。
 
 ```bash
-echo "$(ssh -G isu1 | awk '/^hostname /{print $2}') <ドメイン>" | sudo tee -a /etc/hosts
+h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /etc/hosts > /dev/null
 ```
 
-#### private-isu
+#### 回ごと
 
-- Web ページ: `http://<isu1 のグローバル IP>/`(80 番を開けてあります)
-- bench 機で止めるもの: `sudo systemctl disable --now isu-ruby nginx mysql memcached`
-- ベンチ(bench 機で実行)
+作成時の Summary に、その回の分がそのまま出ます。あとから見るときは次を開いてください。
+`name` を付けて作った環境では、手元で打つ `ssh isu1` などを `ssh isu1-<name>` に読み替えてください(Summary では置き換えて出します)。
+資料(当日マニュアル・アプリケーションマニュアル・出題動画・解説)、Web ページの開き方、ベンチの回し方、使っている AMI の本番との違いが書いてあります。
+`/etc/hosts` に書くブロックは、isu1 の IP を使うので作成時の Summary にだけ出ます。
 
-  ```bash
-  /home/isucon/private_isu/benchmarker/bin/benchmarker \
-    -u /home/isucon/private_isu/benchmarker/userdata \
-    -t http://192.168.0.11
-  ```
-
-  1分ほどで `{"pass":true,"score":...}` が出ます。初期状態(Ruby 実装)は 1,000 点前後が目安です。
-  `No such file` なら `ls ~` で実際のディレクトリ名を確かめてください(公式 README には `private_isu.git` という名前も載っています)
-
-#### ISUCON14
-
-- Web ページ: `/etc/hosts` に `isuride.xiv.isucon.net` を足し、`https://isuride.xiv.isucon.net/` を開きます(証明書の警告は越えてください)
-- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql'` で出たもの。決済モック(12345 番)は止めなくて大丈夫です
-- ベンチ(bench 機で実行)
-
-  ```bash
-  ./bench run . run --addr 192.168.0.11:443 --target https://isuride.xiv.isucon.net \
-    --payment-url http://192.168.0.10:12346 --payment-bind-port 12346
-  ```
-
-  静的ファイルの検査で落ちるときは `--skip-static-sanity-check` を足します。複数台構成にしたら、`--addr` を入口の台に変えます
-
-#### ISUCON13(未検証)
-
-- Web ページ: `/etc/hosts` に `pipe.u.isucon.local` を足し、`https://pipe.u.isucon.local/` を開きます
-- bench 機で止めるもの: `systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql|pdns'` で出たもの
-- ベンチ: 先に isu1 の `~/env.sh` を `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS="192.168.0.11"` に書き換えて、アプリ(`systemctl list-units | grep isupipe` で出るもの)を再起動します。
-  AMI の初期値は `127.0.0.1` で、そのままだと bench 機が名前を引いても自分自身に向かうためです。そのうえで bench 機で実行します
-
-  ```bash
-  ./bench run --enable-ssl --target https://pipe.u.isucon.local \
-    --nameserver 192.168.0.11 --webapp 192.168.0.12 --webapp 192.168.0.13
-  ```
-
-  通らなければ、まず isu1 の上で `./bench run --enable-ssl`(1台で完結する形)が通るか確かめてください
-
-#### ISUCON12 予選(未検証)
-
-- Web ページ: ドメインは `*.t.isucon.local` です。`/etc/hosts` に `admin.t.isucon.local` などを足します
-- ベンチ: `./bench -target-addr 192.168.0.11:443`(配布元の README は1台で回す `127.0.0.1:443` の形だけです)
-
-#### ISUCON11 予選(未検証)
-
-- Web ページ: `https://<isu1 のグローバル IP>/`。ログインには `ssh -L 5000:127.0.0.1:5000 isu1` のポート転送が要ります(配布元の README より)
-- ベンチ: `./bench -tls -target=192.168.0.11 -all-addresses=192.168.0.11,192.168.0.12,192.168.0.13 -jia-service-url http://192.168.0.10:5000`
+| 回 | ファイル |
+|---|---|
+| ISUCON14 | [docs/problems/isucon14.md](docs/problems/isucon14.md) |
+| ISUCON13(ベンチは未検証) | [docs/problems/isucon13.md](docs/problems/isucon13.md) |
+| ISUCON12 予選(ベンチは未検証) | [docs/problems/isucon12-qualify.md](docs/problems/isucon12-qualify.md) |
+| ISUCON11 予選(ベンチは未検証) | [docs/problems/isucon11-qualify.md](docs/problems/isucon11-qualify.md) |
+| private-isu | [docs/problems/private-isu.md](docs/problems/private-isu.md) |
 
 ### 消す
 
@@ -289,3 +252,5 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、アカウント ID を表示する |
 | `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
+| `docs/problems/<回>.md` | 回ごとの資料・Web ページ・ベンチ。作成時の Summary にも出す |
+| `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |

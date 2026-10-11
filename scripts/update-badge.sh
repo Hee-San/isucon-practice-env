@@ -5,29 +5,35 @@
 # 必要な環境変数: AWS の認証情報、GITHUB_TOKEN(contents: write)、GITHUB_REPOSITORY
 set -euo pipefail
 
-rows=$(aws cloudformation describe-stacks \
-  --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].[StackName,StackStatus]" \
-  --output text)
+# 練習用スタックの状態から、バッジの文言(msg)と色(color)を決める
+read_state() {
+  local rows name status state
+  rows=$(aws cloudformation describe-stacks \
+    --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].[StackName,StackStatus]" \
+    --output text)
 
-msg=""
-color="#4c1" # 緑: 何も動いていない
-if [ -z "$rows" ]; then
-  msg="なし(課金ゼロ)"
-else
-  color="#fe7d37" # 橙: 稼働中(課金中)
-  while read -r name status; do
-    case "$status" in
-      CREATE_COMPLETE | UPDATE_COMPLETE) state="稼働中" ;;
-      *_IN_PROGRESS) state="処理中" ;;
-      *) state="異常($status)"; color="#e05d44" ;; # 赤: 作成失敗などで残っている
-    esac
-    msg="${msg:+$msg / }$name $state"
-  done <<<"$rows"
-fi
-echo "バッジ: $msg"
+  msg=""
+  color="#4c1" # 緑: 何も動いていない
+  if [ -z "$rows" ]; then
+    msg="なし(課金ゼロ)"
+  else
+    color="#fe7d37" # 橙: 稼働中(課金中)
+    while read -r name status; do
+      case "$status" in
+        CREATE_COMPLETE | UPDATE_COMPLETE) state="稼働中" ;;
+        *_IN_PROGRESS) state="処理中" ;;
+        *) state="異常($status)"; color="#e05d44" ;; # 赤: 作成失敗などで残っている
+      esac
+      msg="${msg:+$msg / }$name $state"
+    done <<<"$rows"
+  fi
+}
 
-out=$(mktemp -d)
-python3 - "$msg" "$color" "$out/badge.svg" <<'PY'
+# バッジの SVG を作って isucon-status ブランチへ置く
+push_badge() {
+  local out
+  out=$(mktemp -d)
+  python3 - "$msg" "$color" "$out/badge.svg" <<'PY'
 import sys
 from xml.sax.saxutils import escape
 
@@ -55,11 +61,26 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="20" role="
 open(path, "w").write(svg)
 PY
 
-# 履歴は要らないので、毎回1コミットだけの孤立ブランチを強制 push する
-cd "$out"
-git init -q -b isucon-status
-git add badge.svg
-git -c user.name="github-actions[bot]" \
+  # 履歴は要らないので、毎回1コミットだけの孤立ブランチを強制 push する
+  git -C "$out" init -q -b isucon-status
+  git -C "$out" add badge.svg
+  git -C "$out" -c user.name="github-actions[bot]" \
     -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     commit -qm "status: $msg"
-git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:isucon-status
+  git -C "$out" push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:isucon-status
+  rm -rf -- "$out"
+}
+
+# 作成・削除は並行して走るので、古い状態を読んだ実行が後から push すると
+# バッジが古いまま残る。push した後に状態を読み直し、変わっていればやり直す
+read_state
+for _ in 1 2 3 4 5; do
+  echo "バッジ: $msg"
+  pushed="$msg$color"
+  push_badge
+  read_state
+  if [ "$msg$color" = "$pushed" ]; then
+    exit 0
+  fi
+done
+echo "::warning::状態が変わり続けたため、バッジが最新でない可能性があります(次に実行したときに直ります)"
