@@ -21,7 +21,7 @@
 https://admin.t.isucon.local/ や https://isucon.t.isucon.local/ を開きます。証明書の警告は越えてください。
 マニュアルの `.t.isucon.dev` は `.t.isucon.local` に読み替えます。
 
-## ベンチを回す(未検証)
+## ベンチを回す
 
 打つ前にチームのチャンネルで宣言してください(同時に打つと互いのスコアが壊れます)。
 
@@ -34,5 +34,15 @@ systemctl list-units --type=service --state=running | grep -E 'isu|nginx|mysql'
 ベンチは bench 機で次のように実行します。初回は準備に時間がかかることがあるので、失敗したら少し待ってやり直してください。
 
 ```bash
-cd ~/bench && ./bench -target-addr 192.168.0.11:443
+ulimit -n 65536 && cd /home/isucon/bench && ./bench -target-addr 192.168.0.11:443 -target-url https://t.isucon.local
+```
+
+- `-target-url` が無いと通りません
+- `ulimit -n 65536` が無いと、負荷が上がったところでベンチ側に `dial tcp ...: socket: too many open files` が出て減点されます。
+  ssh で入ったシェルや systemd から動かすと、開けるファイル数の上限が 1024 のことがあるためです
+
+MySQL の root にはパスワードがかかっています。root で入るスクリプトは失敗するので、次で入ってください。
+
+```bash
+sudo mysql --defaults-file=/etc/mysql/debian.cnf
 ```

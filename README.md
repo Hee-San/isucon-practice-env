@@ -74,7 +74,16 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 
 あわせて、AWS の「Service Quotas」で東京リージョンの「Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances」が
 **10 以上**あるか確かめてください(4台で 10 vCPU 使います)。
-同じ回を複数同時に建てるなら、その台数分(2つなら 20 以上)が要ります。
+この上限は回をまたいだアカウント全体の合計です。同時に建てる環境の分を、同じ回か別の回かを問わず足し算してください。
+
+| 環境 | vCPU |
+|---|---|
+| ISUCON の回(競技 `c5.large`×3 + ベンチ `c5.xlarge`) | 10 |
+| private-isu(競技 `c7a.large` + ベンチ `c7a.xlarge`) | 6 |
+| ベンチ機を `2xlarge` にしたとき | 上に +4 |
+| ベンチ機を `4xlarge` にしたとき | 上に +12 |
+
+例えば ISUCON13・ISUCON12 予選・private-isu を同時に建てると 26 vCPU 要ります(上限が 20 だと3つ目の作成が失敗します)。
 
 ## メンバーの事前準備(各自1回だけ)
 
@@ -118,9 +127,11 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 
 3. Summary の続きに、サーバに入るコマンドと、その回のマニュアル・出題動画・解説へのリンクが出ます。`ssh isu1` で入れます(ユーザーは `isucon`)
 
-#### 同じ回を複数建てる
+#### 複数の環境を同時に建てる
 
-チームを分けて同じ回を同時に解くときは、2つ目以降の `up` で `name` に区別用の名前(英小文字と数字で10文字まで。例: `2`)を入れます。
+チームを分けて同じ回を同時に解くときや、別の回を並べて建てるときは、2つ目以降の `up` で `name` に区別用の名前(英小文字と数字で10文字まで。例: `2`)を入れます。
+**回が違っても `name` は要ります。** 手元の `ssh_config` は回ではなく `name` ごとに置き換わるので、`name` 無しで2つ目を建てて貼ると、先に建てた環境の `isu1` などが消えて入れなくなります。
+vCPU の上限は全環境の合計で効きます(「初回設定」の表を見てください)。
 
 - スタック名は `<回>-<name>`(例: `isucon14-2`)になり、1つ目とは別の VPC・別の IP で建ちます
 - 手元の `ssh_config` の Host 名は `isu1-2` / `isu2-2` / `isu3-2` / `bench-2` になり、1つ目の `isu1` などとぶつかりません(目印も `isucon-practice-2` と別になるので、貼っても1つ目の設定は消えません)。
@@ -128,6 +139,13 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 - ブラウザで見るための手元の `/etc/hosts` はドメインが同じなので、1台の PC からはどちらか一方しか向けられません(最後に貼った環境の行だけが残ります)
 - 消すときも、作ったときと同じ `problem` と `name` で `down` します
 - `name` は公開のログやバッジに出るので、GitHub ユーザー名は避けてください
+
+#### ベンチ機を大きくする
+
+`up` の `bench_size` で、ベンチ機の大きさを選べます(既定は `xlarge`。ISUCON の回は `c5.xlarge`、private-isu は `c7a.xlarge`)。
+30万点台に入ると、4 vCPU のベンチ機の CPU が先に張りつき、サーバを速くしても点数が動かなくなります
+(ISUCON13 で約 2.9 コア、ISUCON12 予選で 100% になった例があります)。上位の点数を狙うときは `2xlarge`(8 vCPU)か `4xlarge`(16 vCPU)にしてください。
+ベンチ機の CPU が張りついているかは、ベンチ中に bench 機で `top` を見ると分かります。費用と vCPU の上限はその分増えます。
 
 ### 起動後の初期作業
 
@@ -139,9 +157,10 @@ for h in isu1 isu2 isu3 bench; do ssh $h hostname; done
 ```
 
 サーバに入って、次をやります。
+**ISUCON13 では isuadmin を消さないでください。** 当日マニュアルの「変更してはいけない点」に isuadmin ユーザーに関わるファイルとログイン情報があり、変えると失格です。
 
 ```bash
-# 全台: 運営用ユーザーが残っていれば消す(他人の公開鍵が入っている)
+# 全台: 運営用ユーザーが残っていれば消す(他人の公開鍵が入っている)。ISUCON13 では消さない(下を参照)
 id isuadmin && sudo userdel -r isuadmin
 
 # bench: アプリを止めてベンチに CPU を譲る
@@ -182,8 +201,8 @@ h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /
 | 回 | ファイル |
 |---|---|
 | ISUCON14 | [docs/problems/isucon14.md](docs/problems/isucon14.md) |
-| ISUCON13(ベンチは未検証) | [docs/problems/isucon13.md](docs/problems/isucon13.md) |
-| ISUCON12 予選(ベンチは未検証) | [docs/problems/isucon12-qualify.md](docs/problems/isucon12-qualify.md) |
+| ISUCON13 | [docs/problems/isucon13.md](docs/problems/isucon13.md) |
+| ISUCON12 予選 | [docs/problems/isucon12-qualify.md](docs/problems/isucon12-qualify.md) |
 | ISUCON11 予選(ベンチは未検証) | [docs/problems/isucon11-qualify.md](docs/problems/isucon11-qualify.md) |
 | private-isu | [docs/problems/private-isu.md](docs/problems/private-isu.md) |
 
@@ -203,14 +222,15 @@ h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /
 |---|---|
 | ISUCON の回(4台)が稼働中 | 約 $0.56/時。8時間で約 $4.5 |
 | private-isu(2台)が稼働中 | 約 $0.40/時 |
-| 同じ回を複数建てたとき | 上の額 × 建てた数 |
+| ベンチ機を大きくしたとき(ISUCON の回) | `2xlarge` で約 +$0.21/時、`4xlarge` で約 +$0.64/時 |
+| 複数の環境を建てたとき | 上の額の合計 |
 | 削除後 | $0 |
 
 GitHub Actions は公開リポジトリなので無料です。AWS Budgets で予算アラートを設定しておくと安心です。
 
 ## 手で作る・消す
 
-パラメータを細かく変えたいとき(ベンチ機の大きさ、AZ など)は、コンソールか CLI で作ります。
+パラメータを細かく変えたいとき(競技サーバの大きさ、AZ など)は、コンソールか CLI で作ります。
 この場合はタグが付かないので、毎朝の自動削除の対象になりません。必ず手で消してください。
 
 ```bash
@@ -226,7 +246,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 |---|---|---|
 | `ImageId` | ISUCON14 の AMI | 練習する回の AMI ID |
 | `GitHubUsers` | (必須) | 公開鍵を取り込む GitHub ユーザー名(スペース区切り) |
-| `InstanceType` / `BenchInstanceType` | `c5.large` / `c5.xlarge` | 競技サーバとベンチのインスタンスタイプ |
+| `InstanceType` / `BenchInstanceType` | `c5.large` / `c5.xlarge` | 競技サーバとベンチのインスタンスタイプ(ワークフローではベンチだけ `bench_size` で選べる) |
 | `ContestantCount` | `3` | 競技サーバの台数(`1` か `3`) |
 | `VolumeSize` | `20` | ルートボリューム(GB) |
 | `AvailabilityZone` | `ap-northeast-1c` | 作成に失敗したら `ap-northeast-1d` |
@@ -238,7 +258,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | 症状 | 対処 |
 |---|---|
 | 作成が `Unsupported` で失敗する | その AZ にインスタンスタイプが無い。手で `AvailabilityZone` を変えて作る |
-| 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる |
+| 作成が vCPU の上限で失敗する | Service Quotas で上限を引き上げる。上限はほかに建てている環境(別の回も)と合算される。失敗したジョブのログに、`CREATE_FAILED` になったリソースと理由が出る |
 | `ssh` が `Permission denied (publickey)` | その人の GitHub に鍵が登録されているか、`ISUCON_GITHUB_USERS` の綴りを確かめる |
 | `age: error: no identity matched any of the recipients` | 使った秘密鍵が、自分の GitHub アカウントに登録されていない(または `ISUCON_GITHUB_USERS` に自分が入っていない)。「メンバーの事前準備」の手順2で確かめ、鍵を登録してから `down` → `up` で作り直す |
 | `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。貼り付けるブロックの1行目 `K=` を自分の鍵にする |
