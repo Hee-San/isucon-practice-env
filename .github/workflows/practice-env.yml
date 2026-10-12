@@ -19,9 +19,14 @@ on:
         type: choice
         options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu]
       name:
-        description: "同じ回を複数建てるときの区別(英小文字と数字で10文字まで。例: 2, b)。空なら1つ目。公開ログに出るので GitHub ユーザー名は避ける"
+        description: "2つ目以降の環境の区別(回が違っても付ける。英小文字と数字で10文字まで。例: 2, b)。空なら1つ目。公開ログに出るので GitHub ユーザー名は避ける"
         type: string
         default: ""
+      bench_size:
+        description: "ベンチ機の大きさ(up のとき)。xlarge = 4 vCPU。上位の点数ではベンチ機の CPU が先に張りつくので、大きくする(vCPU の上限と費用はその分増える)"
+        type: choice
+        options: [xlarge, 2xlarge, 4xlarge]
+        default: xlarge
   schedule:
     # 消し忘れの安全網: 毎日 05:00 JST に残っている練習環境をすべて削除する
     - cron: "0 20 * * *"
@@ -53,6 +58,7 @@ jobs:
       STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
       NAME: ${{ inputs.name }}
       PROBLEM: ${{ inputs.problem }}
+      BENCH_SIZE: ${{ inputs.bench_size }}
       GITHUB_USERS: ${{ secrets.ISUCON_GITHUB_USERS }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,6 +105,11 @@ jobs:
                               count=1; http=true; type=c7a.large; bench=c7a.xlarge ;;
             *) echo "::error::未知の回: $PROBLEM"; exit 1 ;;
           esac
+          # ベンチ機は種類(c5 / c7a)をそのままに、大きさだけ差し替える
+          case "$BENCH_SIZE" in
+            xlarge|2xlarge|4xlarge) bench=${bench%%.*}.$BENCH_SIZE ;;
+            *) echo "::error::未知の bench_size: $BENCH_SIZE"; exit 1 ;;
+          esac
           if [ -z "$GITHUB_USERS" ]; then
             echo "::error::Secret ISUCON_GITHUB_USERS が空です"; exit 1
           fi
@@ -121,6 +132,7 @@ jobs:
           fi
 
       - name: スタックを作る
+        id: deploy
         run: |
           aws cloudformation deploy \
             --stack-name "$STACK" \
@@ -135,6 +147,16 @@ jobs:
               InstanceType=${{ steps.params.outputs.type }} \
               BenchInstanceType=${{ steps.params.outputs.bench }} \
               GitHubUsers="$GITHUB_USERS"
+
+      - name: 作成に失敗した理由を出す
+        if: ${{ failure() && steps.deploy.outcome == 'failure' }}
+        run: |
+          # deploy は「Failed to create/update the stack」としか言わないので、
+          # vCPU の上限なのか別の理由なのかが分かるよう、失敗したリソースの理由を出す
+          aws cloudformation describe-stack-events --stack-name "$STACK" \
+            --query "StackEvents[?ends_with(ResourceStatus, '_FAILED')].[LogicalResourceId, ResourceStatus, ResourceStatusReason]" \
+            --output table || true
+          echo "vCPU の上限(VcpuLimitExceeded)なら、ほかに建てている環境(別の回も)と合算されています。README の「初回設定」を見てください"
 
       - name: ssh_config を暗号化して Summary に出す
         run: |
@@ -219,7 +241,7 @@ jobs:
             echo "ssh $first"
             echo '```'
             echo
-            echo "最初にやること(運営用ユーザーの削除、bench 機のアプリ停止)は [README の「起動後の初期作業」]($readme#起動後の初期作業) にあります。"
+            echo "最初にやること(運営用ユーザーの削除(ISUCON13 では消さない)、bench 機のアプリ停止)は [README の「起動後の初期作業」]($readme#起動後の初期作業) にあります。"
             echo
             echo "### 3. ポータルの代わり"
             echo
