@@ -17,7 +17,7 @@ on:
       problem:
         description: "練習する回(スタック名になる)"
         type: choice
-        options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu]
+        options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu, nrb2026]
       name:
         description: "2つ目以降の環境の区別(回が違っても付ける。英小文字と数字で10文字まで。例: 2, b)。空なら1つ目。公開ログに出るので GitHub ユーザー名は避ける"
         type: string
@@ -51,8 +51,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'up'
     name: 作成
     # aws CLI が入っている標準ランナーを使う。スタック作成の待ちを含めて5分前後
+    # (起動時に組み立てる nrb2026 は15分前後)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       # name を付けると、スタック名は <回>-<name>(例: isucon14-2)
       STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
@@ -103,8 +104,23 @@ jobs:
             # 1台構成の問題。インスタンスタイプは公式の推奨値、アプリは 80 番
             private-isu)      ami=ami-09201e964bee13733; vol=30
                               count=1; http=true; type=c7a.large; bench=c7a.xlarge ;;
+            # 公開 AMI が無いので、専用のテンプレート(cloudformation/nrb2026.yaml)で素の Ubuntu 24.04 の
+            # 最新に起動時に組み立てる。建っている環境に up し直したときは前回の AMI のままにする
+            # (変わるとサーバが作り直され、サーバ上の変更が消えるため)
+            nrb2026)          ami=$(aws cloudformation describe-stacks --stack-name "$STACK" \
+                                --query "Stacks[0].Parameters[?ParameterKey=='ImageId'].ParameterValue" \
+                                --output text 2>/dev/null || true)
+                              if ! [[ "$ami" =~ ^ami- ]]; then
+                                ami=$(aws ec2 describe-images --owners 099720109477 \
+                                  --filters 'Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*' \
+                                  --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text)
+                              fi
+                              ;;
             *) echo "::error::未知の回: $PROBLEM"; exit 1 ;;
           esac
+          if ! [[ "$ami" =~ ^ami- ]]; then
+            echo "::error::AMI が見つかりません: $ami"; exit 1
+          fi
           # ベンチ機は種類(c5 / c7a)をそのままに、大きさだけ差し替える
           case "$BENCH_SIZE" in
             xlarge|2xlarge|4xlarge) bench=${bench%%.*}.$BENCH_SIZE ;;
@@ -134,19 +150,29 @@ jobs:
       - name: スタックを作る
         id: deploy
         run: |
+          # nrb2026 は専用のテンプレート(台数・ディスク・80 番は決め打ち)。全台の準備が終わるまで待つ
+          if [ "$PROBLEM" = nrb2026 ]; then
+            tpl=cloudformation/nrb2026.yaml
+            params=()
+          else
+            tpl=$TEMPLATE
+            params=(
+              VolumeSize=${{ steps.params.outputs.vol }}
+              ContestantCount=${{ steps.params.outputs.count }}
+              OpenHttp=${{ steps.params.outputs.http }}
+            )
+          fi
           aws cloudformation deploy \
             --stack-name "$STACK" \
-            --template-file "$TEMPLATE" \
+            --template-file "$tpl" \
             --tags "$STACK_TAG" \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               ImageId=${{ steps.params.outputs.ami }} \
-              VolumeSize=${{ steps.params.outputs.vol }} \
-              ContestantCount=${{ steps.params.outputs.count }} \
-              OpenHttp=${{ steps.params.outputs.http }} \
               InstanceType=${{ steps.params.outputs.type }} \
               BenchInstanceType=${{ steps.params.outputs.bench }} \
-              GitHubUsers="$GITHUB_USERS"
+              GitHubUsers="$GITHUB_USERS" \
+              "${params[@]}"
 
       - name: 作成に失敗した理由を出す
         if: ${{ failure() && steps.deploy.outcome == 'failure' }}
