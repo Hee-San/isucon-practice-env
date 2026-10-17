@@ -37,7 +37,7 @@ flowchart LR
 | ISUNARABE 合同演習2026(nrb2026) | 競技 `c5.large`×3 + ベンチ `c5.xlarge`(80 番も開放、ディスク 30GB) | 無し。素の Ubuntu 24.04 に起動時に組み立てる。初期実装は Go に移植したもの |
 
 AMI ID は `.github/workflows/practice-env.yml` の `case` 文に書いてあります。配布元で差し替えられたら、そこを直してください。
-nrb2026 は公開された AMI が無いので、Ubuntu 24.04 の最新の AMI に、`nrb2026/provision.sh` が起動時にベンチ・初期実装・データを組み立てます。
+nrb2026 は公開された AMI が無いので、専用のテンプレート `cloudformation/nrb2026.yaml` で Ubuntu 24.04 の最新の AMI を建て、`nrb2026/provision.sh` が起動時にベンチ・初期実装・データを組み立てます。
 初期実装は本番では Rust だけでしたが、同じ外部仕様を Go に移植したもの(`nrb2026/webapp/go`)を使います。
 
 ## 公開リポジトリで隠しているもの
@@ -258,7 +258,8 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `AvailabilityZone` | `ap-northeast-1c` | 作成に失敗したら `ap-northeast-1d` |
 | `AllowedCidr` | `0.0.0.0/0` | 22/443(と 80)を開ける接続元 |
 | `OpenHttp` | `false` | 80 番も開けるか |
-| `ProvisionScript` / `ProvisionRepo` / `ProvisionRef` | 空 | 起動時に組み立てる回で、組み立てるスクリプトのリポジトリ内のパス・リポジトリ(owner/name)・コミット(nrb2026 なら `nrb2026/provision.sh`・`Hee-San/isucon-practice-env`・main のコミット)。`ImageId` は Ubuntu 24.04 にする |
+
+nrb2026 は `cloudformation/nrb2026.yaml` で作ります(`ImageId` に Ubuntu 24.04 の AMI を渡す。台数・ディスク・80 番は決め打ち)。
 
 ## 落とし穴
 
@@ -281,11 +282,12 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | ファイル | 中身 |
 |---|---|
 | `cloudformation/practice-env.yaml` | 練習環境のテンプレート |
+| `cloudformation/nrb2026.yaml` | nrb2026 専用のテンプレート(素の Ubuntu に起動時に組み立て、全台の準備を待つ) |
 | `cloudformation/github-oidc.yaml` | Actions が引き受ける IAM ロール(初回に1回だけ作る) |
 | `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、アカウント ID を表示する |
 | `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
 | `docs/problems/<回>.md` | 回ごとの資料・Web ページ・ベンチ。作成時の Summary にも出す |
 | `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |
-| `nrb2026/provision.sh` | nrb2026 の環境を素の Ubuntu に組み立てる(ベンチのビルド、seed の生成、MySQL・Go・初期実装の配置) |
+| `nrb2026/provision.sh` | nrb2026 の環境を素の Ubuntu に組み立てる(ベンチのビルド、seed の生成、MySQL・Go・初期実装の配置)。main のものが使われる |
 | `nrb2026/webapp/go` | nrb2026 の初期実装を Go に移植したもの |

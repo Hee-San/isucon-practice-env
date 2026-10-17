@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # nrb2026(ISUNARABE 合同演習2026)の練習環境を、素の Ubuntu 24.04 の上に組み立てる。
-# 公開された AMI が無いため、cloudformation/practice-env.yaml の UserData が起動時に root で呼ぶ。
+# 公開された AMI が無いため、cloudformation/nrb2026.yaml の UserData が起動時に root で呼ぶ。
 #
-#   provision.sh <bench|isu1|isu2|isu3> <WaitConditionHandle の URL> <このリポジトリ(owner/name)> <コミット>
+#   provision.sh <bench|isu1|isu2|isu3> <WaitConditionHandle の URL>
 #
 # bench: 公開されている bench と seed-gen を Rust でビルドし、椅子の画像(1.5GB)を落として
 #        seed.sql とフロントエンドを作る。できたものを VPC の中だけに HTTP で配る
@@ -14,8 +14,6 @@ set -Eeuo pipefail
 
 role=$1
 signal_url=$2
-repo=$3
-ref=$4
 
 # 本家の作問リポジトリ。ベンチ・seed・SQL・フロントエンドはここのものをそのまま使う
 NRB_REPO=KOBA789/nrb2026
@@ -23,6 +21,8 @@ NRB_REF=9b43a13993104d7a70a29577b4733833914917ef
 GO_VERSION=1.24.7
 NODE_VERSION=22.12.0
 PNPM_VERSION=10.29.3 # 本家の frontend/package.json の packageManager と同じ
+# Go の初期実装を取るリポジトリ(このリポジトリの main)
+PRACTICE_REPO=Hee-San/isucon-practice-env
 BENCH_IP=192.168.0.10
 ARTIFACT_PORT=8000
 
@@ -168,7 +168,7 @@ EOF
   step="初期実装の配置"
   local src
   src=$(mktemp -d)
-  curl -fsSL --retry 5 "https://github.com/$repo/archive/$ref.tar.gz" | tar xz -C "$src" --strip-components=1
+  curl -fsSL --retry 5 "https://github.com/$PRACTICE_REPO/archive/main.tar.gz" | tar xz -C "$src" --strip-components=1
   fetch_nrb
   install -d -o isucon -g isucon /home/isucon/webapp /home/isucon/webapp/sql
   rm -rf /home/isucon/webapp/go

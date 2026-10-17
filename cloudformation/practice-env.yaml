@@ -34,25 +34,10 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: 80 番も AllowedCidr に開ける(private-isu をブラウザで見るとき)
-  ProvisionScript:
-    Type: String
-    Default: ""
-    Description: >-
-      公開 AMI の無い回で、起動時に組み立てるスクリプトのリポジトリ内のパス(例: nrb2026/provision.sh)。
-      空なら何もしない
-  ProvisionRepo:
-    Type: String
-    Default: ""
-    Description: 上のスクリプトを取るリポジトリ(owner/name)
-  ProvisionRef:
-    Type: String
-    Default: ""
-    Description: 上のスクリプトを取るコミット
 
 Conditions:
   ThreeContestants: !Equals [!Ref ContestantCount, "3"]
   ShouldOpenHttp: !Equals [!Ref OpenHttp, "true"]
-  ShouldProvision: !Not [!Equals [!Ref ProvisionScript, ""]]
 
 Resources:
   VPC:
@@ -145,28 +130,13 @@ Resources:
             192.168.0.12 isu2
             192.168.0.13 isu3
             EOT
-            # 素の Ubuntu から組み立てる回では isucon ユーザーが無いので作る
-            if ! id isucon > /dev/null 2>&1; then
-              useradd -m -s /bin/bash isucon
-              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
-              chmod 440 /etc/sudoers.d/isucon
-            fi
             install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
             for u in ${GitHubUsers}; do
               curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
             done
             chown isucon:isucon /home/isucon/.ssh/authorized_keys
             chmod 600 /home/isucon/.ssh/authorized_keys
-            if [ -n "${ProvisionScript}" ]; then
-              curl -fsSL --retry 5 -o /root/provision.sh \
-                "https://raw.githubusercontent.com/${ProvisionRepo}/${ProvisionRef}/${ProvisionScript}" &&
-                bash /root/provision.sh ${Host} "${Signal}" "${ProvisionRepo}" "${ProvisionRef}" ||
-                curl -fsS -X PUT -H 'Content-Type:' \
-                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
-                  "${Signal}"
-            fi
-          - Signal: !If [ShouldProvision, !Ref ProvisionHandle, ""]
-            Host: bench
+          - Host: bench
   BenchEIP:
     Type: AWS::EC2::EIP
     Properties:
@@ -200,28 +170,13 @@ Resources:
             192.168.0.12 isu2
             192.168.0.13 isu3
             EOT
-            # 素の Ubuntu から組み立てる回では isucon ユーザーが無いので作る
-            if ! id isucon > /dev/null 2>&1; then
-              useradd -m -s /bin/bash isucon
-              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
-              chmod 440 /etc/sudoers.d/isucon
-            fi
             install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
             for u in ${GitHubUsers}; do
               curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
             done
             chown isucon:isucon /home/isucon/.ssh/authorized_keys
             chmod 600 /home/isucon/.ssh/authorized_keys
-            if [ -n "${ProvisionScript}" ]; then
-              curl -fsSL --retry 5 -o /root/provision.sh \
-                "https://raw.githubusercontent.com/${ProvisionRepo}/${ProvisionRef}/${ProvisionScript}" &&
-                bash /root/provision.sh ${Host} "${Signal}" "${ProvisionRepo}" "${ProvisionRef}" ||
-                curl -fsS -X PUT -H 'Content-Type:' \
-                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
-                  "${Signal}"
-            fi
-          - Signal: !If [ShouldProvision, !Ref ProvisionHandle, ""]
-            Host: isu1
+          - Host: isu1
   Isu1EIP:
     Type: AWS::EC2::EIP
     Properties:
@@ -256,28 +211,13 @@ Resources:
             192.168.0.12 isu2
             192.168.0.13 isu3
             EOT
-            # 素の Ubuntu から組み立てる回では isucon ユーザーが無いので作る
-            if ! id isucon > /dev/null 2>&1; then
-              useradd -m -s /bin/bash isucon
-              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
-              chmod 440 /etc/sudoers.d/isucon
-            fi
             install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
             for u in ${GitHubUsers}; do
               curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
             done
             chown isucon:isucon /home/isucon/.ssh/authorized_keys
             chmod 600 /home/isucon/.ssh/authorized_keys
-            if [ -n "${ProvisionScript}" ]; then
-              curl -fsSL --retry 5 -o /root/provision.sh \
-                "https://raw.githubusercontent.com/${ProvisionRepo}/${ProvisionRef}/${ProvisionScript}" &&
-                bash /root/provision.sh ${Host} "${Signal}" "${ProvisionRepo}" "${ProvisionRef}" ||
-                curl -fsS -X PUT -H 'Content-Type:' \
-                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
-                  "${Signal}"
-            fi
-          - Signal: !If [ShouldProvision, !Ref ProvisionHandle, ""]
-            Host: isu2
+          - Host: isu2
   Isu2EIP:
     Type: AWS::EC2::EIP
     Condition: ThreeContestants
@@ -313,28 +253,13 @@ Resources:
             192.168.0.12 isu2
             192.168.0.13 isu3
             EOT
-            # 素の Ubuntu から組み立てる回では isucon ユーザーが無いので作る
-            if ! id isucon > /dev/null 2>&1; then
-              useradd -m -s /bin/bash isucon
-              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
-              chmod 440 /etc/sudoers.d/isucon
-            fi
             install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
             for u in ${GitHubUsers}; do
               curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
             done
             chown isucon:isucon /home/isucon/.ssh/authorized_keys
             chmod 600 /home/isucon/.ssh/authorized_keys
-            if [ -n "${ProvisionScript}" ]; then
-              curl -fsSL --retry 5 -o /root/provision.sh \
-                "https://raw.githubusercontent.com/${ProvisionRepo}/${ProvisionRef}/${ProvisionScript}" &&
-                bash /root/provision.sh ${Host} "${Signal}" "${ProvisionRepo}" "${ProvisionRef}" ||
-                curl -fsS -X PUT -H 'Content-Type:' \
-                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
-                  "${Signal}"
-            fi
-          - Signal: !If [ShouldProvision, !Ref ProvisionHandle, ""]
-            Host: isu3
+          - Host: isu3
   Isu3EIP:
     Type: AWS::EC2::EIP
     Condition: ThreeContestants
@@ -342,18 +267,6 @@ Resources:
       Domain: vpc
       InstanceId: !Ref Isu3
 
-  # 起動時に組み立てる回では、全台の準備が終わるまでスタックの作成を待つ
-  ProvisionHandle:
-    Type: AWS::CloudFormation::WaitConditionHandle
-    Condition: ShouldProvision
-  ProvisionWait:
-    Type: AWS::CloudFormation::WaitCondition
-    Condition: ShouldProvision
-    DependsOn: [Bench, Isu1]
-    Properties:
-      Handle: !Ref ProvisionHandle
-      Count: !If [ThreeContestants, 4, 2]
-      Timeout: "2700"
 
 Outputs:
   bench:
