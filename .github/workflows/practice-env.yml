@@ -148,9 +148,22 @@ jobs:
           PROVISION: ${{ steps.params.outputs.provision }}
         run: |
           # 起動時に組み立てる回は、このコミットのスクリプトを使う(全台の準備が終わるまで待つ)
+          ami=${{ steps.params.outputs.ami }}
           provision=()
           if [ -n "$PROVISION" ]; then
-            provision=(ProvisionScript="$PROVISION" ProvisionRepo="$GITHUB_REPOSITORY" ProvisionRef="$GITHUB_SHA")
+            ref=$GITHUB_SHA
+            # 建っている環境に up し直したときは、AMI(その時点の最新の Ubuntu)とコミットを前回のまま使う。
+            # 変わるとサーバが作り直されたり再起動したりして、サーバ上の変更が消えるため
+            prev() {
+              aws cloudformation describe-stacks --stack-name "$STACK" \
+                --query "Stacks[0].Parameters[?ParameterKey=='$1'].ParameterValue" --output text 2>/dev/null || true
+            }
+            prev_ami=$(prev ImageId)
+            if [[ "$prev_ami" =~ ^ami- ]]; then
+              ami=$prev_ami
+              ref=$(prev ProvisionRef)
+            fi
+            provision=(ProvisionScript="$PROVISION" ProvisionRepo="$GITHUB_REPOSITORY" ProvisionRef="$ref")
           fi
           aws cloudformation deploy \
             --stack-name "$STACK" \
@@ -158,7 +171,7 @@ jobs:
             --tags "$STACK_TAG" \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              ImageId=${{ steps.params.outputs.ami }} \
+              ImageId="$ami" \
               VolumeSize=${{ steps.params.outputs.vol }} \
               ContestantCount=${{ steps.params.outputs.count }} \
               OpenHttp=${{ steps.params.outputs.http }} \

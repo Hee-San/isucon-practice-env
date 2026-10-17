@@ -348,7 +348,7 @@ func initialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := runMySQLFile(r.Context(), filepath.Join(sqlDir, "schema.sql")); err != nil {
+	if err := runMySQLFile(filepath.Join(sqlDir, "schema.sql")); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -357,7 +357,7 @@ func initialize(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(seed); err != nil {
 		seed = filepath.Join(sqlDir, "seed.base.sql")
 	}
-	if err := runMySQLFile(r.Context(), seed); err != nil {
+	if err := runMySQLFile(seed); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -382,13 +382,14 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func runMySQLFile(ctx context.Context, path string) error {
+// クライアントが途中で切断しても、流し込みは最後まで続ける (途中で止めると DB が半端な状態になる)。
+func runMySQLFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
-	cmd := exec.CommandContext(ctx, "mysql",
+	cmd := exec.Command("mysql",
 		"-h", dbConfig.host,
 		"-P", dbConfig.port,
 		"-u", dbConfig.user,
