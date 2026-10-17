@@ -17,7 +17,7 @@ on:
       problem:
         description: "練習する回(スタック名になる)"
         type: choice
-        options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu]
+        options: [isucon14, isucon13, isucon12-qualify, isucon11-qualify, private-isu, nrb2026]
       name:
         description: "2つ目以降の環境の区別(回が違っても付ける。英小文字と数字で10文字まで。例: 2, b)。空なら1つ目。公開ログに出るので GitHub ユーザー名は避ける"
         type: string
@@ -51,8 +51,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'up'
     name: 作成
     # aws CLI が入っている標準ランナーを使う。スタック作成の待ちを含めて5分前後
+    # (起動時に組み立てる nrb2026 は15分前後)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       # name を付けると、スタック名は <回>-<name>(例: isucon14-2)
       STACK: ${{ inputs.problem }}${{ inputs.name != '' && '-' || '' }}${{ inputs.name }}
@@ -94,7 +95,7 @@ jobs:
         run: |
           # ISUCON の AMI ID は matsuu/aws-isucon、private-isu は catatsuy/private-isu の README から。
           # 差し替えられたらここを直す
-          count=3; http=false; type=c5.large; bench=c5.xlarge
+          count=3; http=false; type=c5.large; bench=c5.xlarge; provision=
           case "$PROBLEM" in
             isucon14)         ami=ami-0fcf9e8e8675a9ee4; vol=20 ;;
             isucon13)         ami=ami-006d211cb716fe8a0; vol=40 ;;
@@ -103,8 +104,17 @@ jobs:
             # 1台構成の問題。インスタンスタイプは公式の推奨値、アプリは 80 番
             private-isu)      ami=ami-09201e964bee13733; vol=30
                               count=1; http=true; type=c7a.large; bench=c7a.xlarge ;;
+            # 公開 AMI が無いので、素の Ubuntu 24.04 の最新に起動時に組み立てる(nrb2026/provision.sh)。
+            # アプリは本番と同じく 80 番で直接動く
+            nrb2026)          ami=$(aws ec2 describe-images --owners 099720109477 \
+                                --filters 'Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*' \
+                                --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text)
+                              vol=30; http=true; provision=nrb2026/provision.sh ;;
             *) echo "::error::未知の回: $PROBLEM"; exit 1 ;;
           esac
+          if ! [[ "$ami" =~ ^ami- ]]; then
+            echo "::error::AMI が見つかりません: $ami"; exit 1
+          fi
           # ベンチ機は種類(c5 / c7a)をそのままに、大きさだけ差し替える
           case "$BENCH_SIZE" in
             xlarge|2xlarge|4xlarge) bench=${bench%%.*}.$BENCH_SIZE ;;
@@ -120,6 +130,7 @@ jobs:
             echo "http=$http"
             echo "type=$type"
             echo "bench=$bench"
+            echo "provision=$provision"
           } >> "$GITHUB_OUTPUT"
 
       - name: 作成に失敗したスタックが残っていれば消す
@@ -133,7 +144,14 @@ jobs:
 
       - name: スタックを作る
         id: deploy
+        env:
+          PROVISION: ${{ steps.params.outputs.provision }}
         run: |
+          # 起動時に組み立てる回は、このコミットのスクリプトを使う(全台の準備が終わるまで待つ)
+          provision=()
+          if [ -n "$PROVISION" ]; then
+            provision=(ProvisionScript="$PROVISION" ProvisionRepo="$GITHUB_REPOSITORY" ProvisionRef="$GITHUB_SHA")
+          fi
           aws cloudformation deploy \
             --stack-name "$STACK" \
             --template-file "$TEMPLATE" \
@@ -146,7 +164,8 @@ jobs:
               OpenHttp=${{ steps.params.outputs.http }} \
               InstanceType=${{ steps.params.outputs.type }} \
               BenchInstanceType=${{ steps.params.outputs.bench }} \
-              GitHubUsers="$GITHUB_USERS"
+              GitHubUsers="$GITHUB_USERS" \
+              "${provision[@]}"
 
       - name: 作成に失敗した理由を出す
         if: ${{ failure() && steps.deploy.outcome == 'failure' }}

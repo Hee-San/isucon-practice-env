@@ -65,12 +65,13 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # 練習用スタックは名前が isucon か private-isu で始まるものに限る
+              # 練習用スタックは名前が isucon・private-isu・nrb2026 で始まるものに限る
               - Effect: Allow
                 Action: cloudformation:*
                 Resource:
                   - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/isucon*/*"
                   - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/private-isu*/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/nrb2026*/*"
               - Effect: Allow
                 Action:
                   - cloudformation:DescribeStacks

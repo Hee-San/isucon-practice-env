@@ -34,8 +34,11 @@ flowchart LR
 | ISUCON12 予選 | 同上 | 同上 |
 | ISUCON11 予選 | 同上 | 同上 |
 | private-isu | 競技 `c7a.large`×1 + ベンチ `c7a.xlarge`(80 番も開放) | [catatsuy/private-isu](https://github.com/catatsuy/private-isu) |
+| ISUNARABE 合同演習2026(nrb2026) | 競技 `c5.large`×3 + ベンチ `c5.xlarge`(80 番も開放、ディスク 30GB) | 無し。素の Ubuntu 24.04 に起動時に組み立てる。初期実装は Go に移植したもの |
 
 AMI ID は `.github/workflows/practice-env.yml` の `case` 文に書いてあります。配布元で差し替えられたら、そこを直してください。
+nrb2026 は公開された AMI が無いので、Ubuntu 24.04 の最新の AMI に、`nrb2026/provision.sh` が起動時にベンチ・初期実装・データを組み立てます。
+初期実装は本番では Rust だけでしたが、同じ外部仕様を Go に移植したもの(`nrb2026/webapp/go`)を使います。
 
 ## 公開リポジトリで隠しているもの
 
@@ -58,7 +61,8 @@ AWS のロールを引き受けられるのは、このリポジトリの main �
    ```
 
    Actions 用の IAM ロール(`cloudformation/github-oidc.yaml`)をスタック `github-actions-isucon` として作り、最後に Secret に登録するアカウント ID を表示します。
-   アカウントに GitHub の OIDC プロバイダが既にあるかは自動で判定します。何度実行しても大丈夫です
+   アカウントに GitHub の OIDC プロバイダが既にあるかは自動で判定します。何度実行しても大丈夫です。
+   nrb2026 が加わる前に設定した場合は、もう一度実行してください(ロールが作れるスタックの名前に `nrb2026` を足したため)
 2. 表示されたリンク(このリポジトリの「Settings」→「Secrets and variables」→「Actions」)で、Secret を2つ作ります
 
    | 名前 | 値 |
@@ -80,6 +84,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 |---|---|
 | ISUCON の回(競技 `c5.large`×3 + ベンチ `c5.xlarge`) | 10 |
 | private-isu(競技 `c7a.large` + ベンチ `c7a.xlarge`) | 6 |
+| nrb2026(ISUCON の回と同じ構成) | 10 |
 | ベンチ機を `2xlarge` にしたとき | 上に +4 |
 | ベンチ機を `4xlarge` にしたとき | 上に +12 |
 
@@ -114,7 +119,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
 ### 作る
 
 1. 「Actions」→「practice-env」→「Run workflow」で、`action` を `up`、`problem` を練習する回にして実行します
-2. 5分前後で終わります。実行結果の Summary に、手元で貼り付けるコマンドのブロックが出ます。
+2. 5分前後で終わります(nrb2026 は起動時に組み立てるので15分前後)。実行結果の Summary に、手元で貼り付けるコマンドのブロックが出ます。
    **ブロックを丸ごと1回でコピーして**、手元のターミナルに貼り付けてください(秘密鍵が `~/.ssh/id_ed25519` でなければ、1行目の `K=` を書き換えてから)。
    中に入っている暗号化した `ssh_config` を復号し、前に足した設定を消してから、新しい設定を `~/.ssh/config` の先頭に足します
 
@@ -205,6 +210,7 @@ h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /
 | ISUCON12 予選 | [docs/problems/isucon12-qualify.md](docs/problems/isucon12-qualify.md) |
 | ISUCON11 予選(ベンチは未検証) | [docs/problems/isucon11-qualify.md](docs/problems/isucon11-qualify.md) |
 | private-isu | [docs/problems/private-isu.md](docs/problems/private-isu.md) |
+| ISUNARABE 合同演習2026(nrb2026) | [docs/problems/nrb2026.md](docs/problems/nrb2026.md) |
 
 ### 消す
 
@@ -220,7 +226,7 @@ h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /
 
 | 状態 | 費用 |
 |---|---|
-| ISUCON の回(4台)が稼働中 | 約 $0.56/時。8時間で約 $4.5 |
+| ISUCON の回・nrb2026(4台)が稼働中 | 約 $0.56/時。8時間で約 $4.5 |
 | private-isu(2台)が稼働中 | 約 $0.40/時 |
 | ベンチ機を大きくしたとき(ISUCON の回) | `2xlarge` で約 +$0.21/時、`4xlarge` で約 +$0.64/時 |
 | 複数の環境を建てたとき | 上の額の合計 |
@@ -252,6 +258,7 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `AvailabilityZone` | `ap-northeast-1c` | 作成に失敗したら `ap-northeast-1d` |
 | `AllowedCidr` | `0.0.0.0/0` | 22/443(と 80)を開ける接続元 |
 | `OpenHttp` | `false` | 80 番も開けるか |
+| `ProvisionScript` / `ProvisionRepo` / `ProvisionRef` | 空 | 起動時に組み立てる回で、組み立てるスクリプトのリポジトリ内のパス・リポジトリ(owner/name)・コミット(nrb2026 なら `nrb2026/provision.sh`・`Hee-San/isucon-practice-env`・main のコミット)。`ImageId` は Ubuntu 24.04 にする |
 
 ## 落とし穴
 
@@ -264,6 +271,8 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `age: error: reading ".../id_ed25519": no such file` | 鍵の名前が違う。貼り付けるブロックの1行目 `K=` を自分の鍵にする |
 | `ssh_config` を復号できない(上以外) | GitHub に登録した鍵が ECDSA などで、age が扱えない。ed25519 の鍵を GitHub に追加してから作り直す |
 | `Could not assume role` | Secret `AWS_ACCOUNT_ID` の値が違う、または main 以外から実行した。失敗したジョブの最後のステップに、OIDC トークンの `sub` が出るので、`repo:Hee-San@8444945/isucon-practice-env@1404043632:ref:refs/heads/main` と一致するか見る(GitHub の新しい形式。リポジトリを作り直すと ID が変わるので、`bootstrap.sh` を実行し直す) |
+| nrb2026 の作成が `not authorized to perform: cloudformation:...` で失敗する | ロールを nrb2026 の追加前に作っている。「初回設定」の手順1をもう一度実行する |
+| nrb2026 の作成が `ProvisionWait` で失敗する | 起動時の組み立てに失敗した。失敗したジョブのログに、どのサーバのどの手順で失敗したかと、そのログの末尾が出る(スタックは消えるので、サーバには残らない) |
 | バッジが表示されない | `status` で1回実行する |
 | 毎朝の自動削除が動かなくなった | 公開リポジトリは60日間動きが無いと定期実行が止まる。Actions 画面で有効にし直す |
 
@@ -278,3 +287,5 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
 | `docs/problems/<回>.md` | 回ごとの資料・Web ページ・ベンチ。作成時の Summary にも出す |
 | `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |
+| `nrb2026/provision.sh` | nrb2026 の環境を素の Ubuntu に組み立てる(ベンチのビルド、seed の生成、MySQL・Go・初期実装の配置) |
+| `nrb2026/webapp/go` | nrb2026 の初期実装を Go に移植したもの |
