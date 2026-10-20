@@ -24,6 +24,27 @@ Parameters:
     Type: String
     Default: 0.0.0.0/0
     Description: 22/80 を開ける接続元
+  Contest:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: 本番に近いモード。bench 機には入れず(鍵を入れず 22 番も閉じる)、bench 機の練習用ポータル(80 番)からベンチを回す
+  PortalToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: ポータルのセッション Cookie の値(Contest のとき)
+  PortalRef:
+    Type: String
+    Default: main
+    Description: ポータルを取るこのリポジトリの ref(Contest のとき)
+  ContestHours:
+    Type: String
+    Default: "8"
+    Description: 競技時間(Contest のとき)。0 で無制限
+
+Conditions:
+  IsContest: !Equals [!Ref Contest, "true"]
 
 Resources:
   VPC:
@@ -78,6 +99,23 @@ Resources:
       GroupId: !Ref SecurityGroup
       IpProtocol: "-1"
       SourceSecurityGroupId: !Ref SecurityGroup
+  BenchSecurityGroup:
+    # Contest のときの bench 機。外からはポータル(80 番)だけ。競技サーバとの間は全プロトコルを通す
+    Type: AWS::EC2::SecurityGroup
+    Condition: IsContest
+    Properties:
+      GroupDescription: nrb2026 bench (contest)
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref AllowedCidr }
+        - { IpProtocol: "-1", SourceSecurityGroupId: !Ref SecurityGroup }
+  SecurityGroupFromBenchIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: IsContest
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref BenchSecurityGroup
 
   # 全台の準備(nrb2026/provision.sh)が終わるまでスタックの作成を待つ。失敗したらその理由が出る
   ProvisionHandle:
@@ -99,43 +137,72 @@ Resources:
       NetworkInterfaces:
         - DeviceIndex: "0"
           SubnetId: !Ref Subnet
-          GroupSet: [!Ref SecurityGroup]
+          # Contest でなければ、競技サーバと同じもの(Contest を足す前と同じにして、建っている環境の bench 機を作り直さない)
+          GroupSet: !If [IsContest, [!Ref BenchSecurityGroup], [!Ref SecurityGroup]]
           PrivateIpAddress: 192.168.0.10
           AssociatePublicIpAddress: true
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs: { VolumeType: gp3, VolumeSize: 30 }
       Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-bench" }]
-      UserData:
-        Fn::Base64: !Sub
-          - |
-            #!/bin/bash
-            echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
-            hostnamectl set-hostname ${Host}
-            cat >> /etc/hosts <<'EOT'
-            192.168.0.10 bench
-            192.168.0.11 isu1
-            192.168.0.12 isu2
-            192.168.0.13 isu3
-            EOT
-            useradd -m -s /bin/bash isucon
-            echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
-            chmod 440 /etc/sudoers.d/isucon
-            install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
-            for u in ${GitHubUsers}; do
-              curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
-            done
-            chown isucon:isucon /home/isucon/.ssh/authorized_keys
-            chmod 600 /home/isucon/.ssh/authorized_keys
-            # 組み立てる。スクリプト自体を取れなかったときも失敗を知らせる
-            curl -fsSL --retry 5 -o /root/provision.sh \
-              https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/nrb2026/provision.sh &&
-              bash /root/provision.sh ${Host} "${Signal}" ||
-              curl -fsS -X PUT -H 'Content-Type:' \
-                --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
-                "${Signal}"
-          - Host: bench
-            Signal: !Ref ProvisionHandle
+      UserData: !If
+        - IsContest
+        # Contest: SSH 鍵を入れず、練習用のポータル(portal/install.sh)を立ててから組み立てる。
+        # 準備の完了は provision.sh が知らせるので、ポータルを先にして、立たなければ失敗を知らせる
+        - Fn::Base64: !Sub
+            - |
+              #!/bin/bash
+              echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+              hostnamectl set-hostname ${Host}
+              cat >> /etc/hosts <<'EOT'
+              192.168.0.10 bench
+              192.168.0.11 isu1
+              192.168.0.12 isu2
+              192.168.0.13 isu3
+              EOT
+              useradd -m -s /bin/bash isucon
+              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
+              chmod 440 /etc/sudoers.d/isucon
+              curl -fsSL --retry 5 -o /root/provision.sh \
+                https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/nrb2026/provision.sh &&
+                curl -fsSL --retry 5 -o /root/portal-install.sh \
+                  https://raw.githubusercontent.com/Hee-San/isucon-practice-env/${PortalRef}/portal/install.sh &&
+                bash /root/portal-install.sh nrb2026 ${PortalToken} ${PortalRef} ${ContestHours} &&
+                bash /root/provision.sh ${Host} "${Signal}" ||
+                curl -fsS -X PUT -H 'Content-Type:' \
+                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
+                  "${Signal}"
+            - Host: bench
+              Signal: !Ref ProvisionHandle
+        - Fn::Base64: !Sub
+            - |
+              #!/bin/bash
+              echo 'preserve_hostname: true' > /etc/cloud/cloud.cfg.d/99-isucon.cfg
+              hostnamectl set-hostname ${Host}
+              cat >> /etc/hosts <<'EOT'
+              192.168.0.10 bench
+              192.168.0.11 isu1
+              192.168.0.12 isu2
+              192.168.0.13 isu3
+              EOT
+              useradd -m -s /bin/bash isucon
+              echo 'isucon ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/isucon
+              chmod 440 /etc/sudoers.d/isucon
+              install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
+              for u in ${GitHubUsers}; do
+                curl -fsS "https://github.com/$u.keys" >> /home/isucon/.ssh/authorized_keys
+              done
+              chown isucon:isucon /home/isucon/.ssh/authorized_keys
+              chmod 600 /home/isucon/.ssh/authorized_keys
+              # 組み立てる。スクリプト自体を取れなかったときも失敗を知らせる
+              curl -fsSL --retry 5 -o /root/provision.sh \
+                https://raw.githubusercontent.com/Hee-San/isucon-practice-env/main/nrb2026/provision.sh &&
+                bash /root/provision.sh ${Host} "${Signal}" ||
+                curl -fsS -X PUT -H 'Content-Type:' \
+                  --data-binary '{"Status":"FAILURE","Reason":"${Host}: provision failed","UniqueId":"${Host}","Data":"FAILURE"}' \
+                  "${Signal}"
+            - Host: bench
+              Signal: !Ref ProvisionHandle
   BenchEIP:
     Type: AWS::EC2::EIP
     Properties:
