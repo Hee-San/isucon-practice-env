@@ -4,8 +4,9 @@
 #   - <!-- hosts: <ドメイン>... --> を、isu1 の IP とそのドメインを /etc/hosts に書くブロックにする
 #   - <!-- url: <http か https> --> を、isu1 の IP から開く URL を出すブロックにする
 #   - name 付きの環境では、手元で打つ ssh の Host 名を isu1-<name> などにする
+#   - contest の環境では、「ベンチを回す」の頭に、bench 機には入れずポータルから回すことを書き足す
 #
-# 使い方: render-problem.sh <docs/problems/回.md> <最初の番号> [<name>]
+# 使い方: render-problem.sh <docs/problems/回.md> <最初の番号> [<name>] [<contest(true か false)>]
 #
 # ブロックは手元(macOS 標準の zsh を含む)に貼って使う。zsh は対話シェルで # を
 # コメントとして扱わないので、ブロックの中にコメントを書かない。
@@ -14,6 +15,7 @@ set -euo pipefail
 file=$1
 n=$2
 suffix=${3:+-$3}
+contest=${4:-false}
 isu1="isu1$suffix"
 
 # isu1 の IP を ip に入れる。~/.ssh/config に Host が無いと ssh -G は Host 名を
@@ -55,6 +57,11 @@ perl -pe "s/\b(ssh(?: -G| -L \S+)?) (isu[123]|bench)\b/\$1 \$2$suffix/g; s/作�
       '## '*)
         echo "### $n. ${line#'## '}"
         n=$((n + 1))
+        if [ "$contest" = true ] && [[ "$line" == "## ベンチを回す"* ]]; then
+          echo
+          echo "**この環境(contest)では bench 機に入れません。** 負荷走行は 3. のポータル(画面か isuloop)から入れます。bench 機のアプリはポータルが止めてあります。"
+          echo "以下のうち bench 機で打つコマンドは、ポータルが向き先のサーバに向けて実行するもの(参考)です。競技サーバでやる準備は、この環境でも要ります。"
+        fi
         ;;
       '<!-- hosts: '*' -->')
         d=${line#'<!-- hosts: '}

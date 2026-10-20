@@ -152,6 +152,28 @@ vCPU の上限は全環境の合計で効きます(「初回設定」の表を�
 (ISUCON13 で約 2.9 コア、ISUCON12 予選で 100% になった例があります)。上位の点数を狙うときは `2xlarge`(8 vCPU)か `4xlarge`(16 vCPU)にしてください。
 ベンチ機の CPU が張りついているかは、ベンチ中に bench 機で `top` を見ると分かります。費用と vCPU の上限はその分増えます。
 
+#### 本番に近いモード(contest)
+
+`up` の `contest` にチェックを入れると、本番と同じく **bench 機には入れず、ポータルからベンチを回す** 環境になります。
+bench 機には練習用のポータル(`portal/portal.py`)が 80 番で立ちます。本番の公式ポータル(isuxportal。ISUCON12〜14)と同じ API なので、
+[isucon-loop](https://github.com/Hee-San/isucon-loop) を本番と同じ `bench.mode: portal` で動かせます。ブラウザでも開けます。
+
+| 本番と同じにしたところ | この環境 |
+|---|---|
+| bench 機 | SSH 鍵を入れず、外からは 22 番も閉じる。ベンチのログもソースも見られない。アプリはポータルが起動時に止める |
+| 負荷走行 | ポータルの画面か API で enqueue する。チームで同時に走れる job は1つ(走っている間の enqueue は断られる) |
+| 結果 | 点数・合否・理由と、標準出力の末尾 100 行・標準エラーの末尾 30 行だけ |
+| 向き先 | ポータルのサーバリスト(1〜3)から選ぶ。中身はプライベート IP |
+| 競技時間 | ポータルが起動してから8時間。過ぎると新しい負荷走行を受け付けない(`contest is not open`) |
+
+作成時の Summary の「ポータル」のブロックを手元に貼ると、isuloop が読む Cookie(`~/.config/isuloop/portal-cookie`)を書き、ポータルの URL とブラウザで開くログイン用の URL を出します。
+isuloop は `isuloop init --prod` のひな形から始め、`bench.portal.url` をその URL に、`deck` を練習用の名前にします。`isuloop install-agent` は競技サーバ(isu1〜3)にだけ入れます。
+
+- contest は作るときにだけ選べます。建っている環境を contest に変える(またはその逆の)ときは、`down` してから作り直してください
+- ポータルは HTTP(TLS なし)です。トークンは環境ごとに作り直し、消せば使えなくなります
+- 本番の負荷走行は運営のベンチ機から来ますが、この環境では同じ VPC の bench 機から来ます(ネットワークの近さは本番とほぼ同じです)
+- ポータルが回すコマンドは `portal/install.sh` にあります(回ごとの「ベンチを回す」と同じもの)
+
 ### 起動後の初期作業
 
 全員、手元の PC で全台に入れるか確かめます(作成時の Summary に、その環境の台数と Host 名に合わせたコマンドが出ます)。
@@ -258,6 +280,8 @@ aws cloudformation delete-stack --region ap-northeast-1 --stack-name isucon14
 | `AvailabilityZone` | `ap-northeast-1c` | 作成に失敗したら `ap-northeast-1d` |
 | `AllowedCidr` | `0.0.0.0/0` | 22/443(と 80)を開ける接続元 |
 | `OpenHttp` | `false` | 80 番も開けるか |
+| `Contest` | `false` | 本番に近いモード(bench 機に入れず、ポータルから回す) |
+| `Problem` / `PortalToken` / `PortalRef` / `ContestHours` | 空 / 空 / `main` / `8` | Contest のときの回・ポータルのトークン・ポータルを取る ref・競技時間 |
 
 nrb2026 は `cloudformation/nrb2026.yaml` で作ります(`ImageId` に Ubuntu 24.04 の AMI を渡す。台数・ディスク・80 番は決め打ち)。
 
@@ -291,3 +315,5 @@ nrb2026 は `cloudformation/nrb2026.yaml` で作ります(`ImageId` に Ubuntu 2
 | `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |
 | `nrb2026/provision.sh` | nrb2026 の環境を素の Ubuntu に組み立てる(ベンチのビルド、seed の生成、MySQL・Go・初期実装の配置)。main のものが使われる |
 | `nrb2026/webapp/go` | nrb2026 の初期実装を Go に移植したもの |
+| `portal/portal.py` | contest の bench 機で動く練習用のポータル(isuxportal と同じ API と、ブラウザの画面) |
+| `portal/install.sh` | 上を bench 機に入れる。回ごとのベンチのコマンドと、bench 機のアプリの停止 |
