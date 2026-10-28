@@ -28,8 +28,8 @@ on:
         options: [xlarge, 2xlarge, 4xlarge]
         default: xlarge
   schedule:
-    # 消し忘れの安全網: 毎日 05:00 JST に残っている練習環境をすべて削除する
-    - cron: "0 20 * * *"
+    # 消し忘れの安全網: 2時間おきに、作ってから9時間たった練習環境を削除する
+    - cron: "0 */2 * * *"
 
 permissions:
   contents: write # 状態バッジを isucon-status ブランチへ push するため
@@ -288,7 +288,7 @@ jobs:
             echo "### $((last + 1)). 終わったら消す"
             echo
             echo "サーバ上の変更は消えるので、先にチームのリポジトリへ push してから、Actions の「practice-env」を \`down\`(problem と name は作ったときと同じ)で実行してください。"
-            echo '消し忘れても毎日 05:00 JST に自動で削除されます。'
+            echo '消し忘れても、作ってから9時間たつと自動で削除されます(2時間おきに確かめるので9〜11時間後)。'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 状態バッジを更新する
@@ -384,13 +384,23 @@ jobs:
           echo "AWS 側の信頼条件の sub は repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main(または従来形式)。違っていればここが原因"
           echo "一致しているなら、Secret AWS_ACCOUNT_ID の値(12桁の数字)を確かめる"
 
-      - name: タグ付きの練習用スタックをすべて削除する
+      - name: 作ってから9時間たった練習用スタックを削除する
         run: |
-          stacks=$(aws cloudformation describe-stacks \
-            --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].StackName" \
+          # 1行に「スタック名<TAB>作成日時(ISO 8601)」
+          all=$(aws cloudformation describe-stacks \
+            --query "Stacks[?Tags[?Key=='managed-by' && Value=='isucon-practice']].[StackName,CreationTime]" \
             --output text)
+          cutoff=$(date -u -d '9 hours ago' +%s)
+          stacks=""
+          while read -r name created; do
+            [ -n "$name" ] || continue
+            if [ "$(date -u -d "$created" +%s)" -le "$cutoff" ]; then
+              stacks="$stacks $name"
+            fi
+          done <<< "$all"
+          stacks=$(echo $stacks)
           if [ -z "$stacks" ]; then
-            echo "残っている練習環境はありません"
+            echo "9時間たった練習環境はありません"
           fi
           for s in $stacks; do
             echo "削除: $s"
@@ -400,7 +410,7 @@ jobs:
             aws cloudformation wait stack-delete-complete --stack-name "$s"
           done
           if [ -n "$stacks" ]; then
-            echo "## 消し忘れを削除しました: $stacks" >> "$GITHUB_STEP_SUMMARY"
+            echo "## 9時間たった練習環境を削除しました: $stacks" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 状態バッジを更新する
