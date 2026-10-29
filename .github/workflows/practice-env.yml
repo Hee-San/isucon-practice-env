@@ -227,6 +227,11 @@ jobs:
           done
           config+="Host *"$'\n'"# <<< $mark <<<"$'\n'
           printf '%s' "$config" | age --armor -R recipients.txt > ssh_config.age
+          # 同じ暗号文をログにも出す。Summary はブラウザでしか読めないが、ログは gh run view --log で取れるので、
+          # 手元の AI が人の手を借りずに復号できる(復号できるのは、Summary と同じくメンバーの鍵だけ)
+          echo "::group::ssh_config.age"
+          cat ssh_config.age
+          echo "::endgroup::"
 
           readme="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/README.md"
           first=${hosts%% *}
