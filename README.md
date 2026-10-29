@@ -13,7 +13,7 @@ ISUCON の過去問をチームで解くための AWS 練習環境です。本�
 flowchart LR
   GH["GitHub<br/>github.com/&lt;user&gt;.keys"] -. "起動時に公開鍵を取得" .-> VPC
   M["メンバーの手元<br/>ssh isu1 / isu2 / isu3 / bench"] -- "SSH(22) / HTTPS(443)<br/>Elastic IP 経由" --> VPC
-  GA["GitHub Actions<br/>up / down / 毎朝5時に削除"] -. "スタックを作成・削除" .-> VPC
+  GA["GitHub Actions<br/>up / down / 9時間で自動削除"] -. "スタックを作成・削除" .-> VPC
   subgraph VPC["VPC 192.168.0.0/16(同一サブネット、内部は全通)"]
     direction TB
     B["bench 192.168.0.10"]
@@ -129,6 +129,7 @@ CloudFormation の「Launch Stack」リンクはテンプレートを S3 に置�
    - ただし、後ろの設定にある、この範囲で指定していない項目(`Port` や `ProxyJump` など)は効きます。
      目印の無い古い `Host isu1` などが残っていると注意が出るので、手で消してください
    - サーバは作るたびに IP とホスト鍵が変わるので、この設定では known_hosts に記録せず、ホスト鍵の確認もしません
+   - 同じ暗号文は実行ログの `ssh_config.age` の段にも出ます。ブラウザを開かずに(AI に任せるときなど)受け取るなら、`scripts/fetch-ssh-config.sh <run の番号>` で復号して `~/.ssh/config` の先頭に足せます(貼るブロックと同じ置き換え方)
 
 3. Summary の続きに、サーバに入るコマンドと、その回のマニュアル・出題動画・解説へのリンクが出ます。`ssh isu1` で入れます(ユーザーは `isucon`)
 
@@ -167,6 +168,7 @@ bench 機には練習用のポータル(`portal/portal.py`)が 80 番で立ち�
 | 競技時間 | ポータルが起動してから8時間。過ぎると新しい負荷走行を受け付けない(`contest is not open`) |
 
 作成時の Summary の「ポータル」のブロックを手元に貼ると、isuloop が読む Cookie(`~/.config/isuloop/portal-cookie`)を書き、ポータルの URL とブラウザで開くログイン用の URL を出します。
+ブラウザを開かずに受け取るなら、`scripts/fetch-portal.sh <run の番号>` が実行ログの `portal.age` の段から同じことをします(ssh は `scripts/fetch-ssh-config.sh`)。
 isuloop は `isuloop init --prod` のひな形から始め、`bench.portal.url` をその URL に、`deck` を練習用の名前にします。`isuloop install-agent` は競技サーバ(isu1〜3)にだけ入れます。
 
 - contest は作るときにだけ選べます。建っている環境を contest に変える(またはその逆の)ときは、`down` してから作り直してください
@@ -239,8 +241,8 @@ h=$(grep -v ' # isucon-practice$' /etc/hosts) && printf '%s\n' "$h" | sudo tee /
 「Run workflow」で `action` を `down`、`problem`(と `name`)を作ったときと同じにして実行します。
 緑になれば、インスタンス・Elastic IP・EBS・VPC がすべて消えています。`problem` と `name` に当たるスタックが無ければ、いまある練習環境の名前を出して失敗します。サーバ上の変更は消えるので、先にチームのリポジトリへ push してください。
 
-**消し忘れても、毎日 05:00 JST に残っている練習環境をすべて削除します。** 徹夜で練習する日は、5時前に push しておいてください。
-朝にバッジが橙のままなら自動削除が動いていないので、`down` で消してください。
+**消し忘れても、作ってから9時間たった練習環境は自動で削除します**(2時間おきに確かめるので、実際には9〜11時間で消えます)。8時間の練習なら足りますが、それより長く使うときは9時間たつ前に push しておいてください。
+作ってから11時間を過ぎてもバッジが橙のままなら自動削除が動いていないので、`down` で消してください。
 
 ## 費用
 
@@ -309,7 +311,7 @@ nrb2026 は `cloudformation/nrb2026.yaml` で作ります(`ImageId` に Ubuntu 2
 | `cloudformation/nrb2026.yaml` | nrb2026 専用のテンプレート(素の Ubuntu に起動時に組み立て、全台の準備を待つ) |
 | `cloudformation/github-oidc.yaml` | Actions が引き受ける IAM ロール(初回に1回だけ作る) |
 | `scripts/bootstrap.sh` | 初回設定。CloudShell で上のロールを作り、アカウント ID を表示する |
-| `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、毎朝5時の消し忘れ削除 |
+| `.github/workflows/practice-env.yml` | `up` / `down` / `status` と、作ってから9時間たった環境の消し忘れ削除 |
 | `scripts/update-badge.sh` | 状態バッジを作って `isucon-status` ブランチへ置く |
 | `docs/problems/<回>.md` | 回ごとの資料・Web ページ・ベンチ。作成時の Summary にも出す |
 | `scripts/render-problem.sh` | 上を Summary 向けに書き換える(見出しの番号、`/etc/hosts` のブロック、name 付きの Host 名) |
