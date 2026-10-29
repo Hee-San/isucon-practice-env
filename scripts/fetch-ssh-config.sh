@@ -7,8 +7,9 @@ run=${1:?run の番号を渡してください(gh run list --workflow practice-e
 K=${2:-$HOME/.ssh/id_ed25519}
 repo=${REPO:-Hee-San/isucon-practice-env}
 
-# ログの行は「ジョブ<TAB>ステップ<TAB>時刻 本文」。時刻までを落として、暗号文の範囲だけを取る
-enc=$(gh run view "$run" --repo "$repo" --log | sed -n 's/^.*Z //; /-----BEGIN AGE ENCRYPTED FILE-----/,/-----END AGE ENCRYPTED FILE-----/p')
+# ログの行は「ジョブ<TAB>ステップ<TAB>時刻 本文」。時刻までを落として、最初の暗号文(ssh_config.age)だけを取る。
+# contest の環境では、その後に portal.age が続く(scripts/fetch-portal.sh が読む)
+enc=$(gh run view "$run" --repo "$repo" --log | awk '{ sub(/^.*Z /, "") } /-----BEGIN AGE ENCRYPTED FILE-----/ { p = 1 } p { print } p && /-----END AGE ENCRYPTED FILE-----/ { exit }')
 if [ -z "$enc" ]; then
   echo "run $run のログに ssh_config.age がありません(up の run か、ログに暗号文を出す前の workflow ではないか確かめてください)" >&2
   exit 1
